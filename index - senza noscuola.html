@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>YouC</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json"/>
+  <meta name="theme-color" content="#F7F6F2"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+  <meta name="apple-mobile-web-app-title" content="YouC"/>
+  <link rel="apple-touch-icon" href="icons/icon-192.png"/>
+
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+
+    html,body{
+      height:100%;
+      width:100%;
+      background:#F7F6F2;
+      font-family:system-ui,-apple-system,sans-serif;
+      overflow:hidden;
+    }
+
+    #app{
+      display:flex;
+      flex-direction:column;
+      height:100vh;
+      width:100vw;
+      padding:12px;
+    }
+
+    /* ── GRIGLIA ── */
+    .grid{
+      display:grid;
+      grid-template-columns:repeat(12, 14px minmax(0,1fr));
+      gap:0 1px;
+      border:1px solid #1A1A18;
+      border-radius:10px;
+      overflow:hidden;
+      background:#1A1A18;
+      flex:1;
+    }
+
+    /* Le celle si espandono per riempire l'altezza disponibile */
+    .cell{
+      background:#fff;
+      border-right:none;
+      border-bottom:0.5px solid #ccc;
+      position:relative;
+      overflow:hidden;
+      min-height:0;
+    }
+    .cell.week-sep{border-top:1.5px dashed #1A1A18}
+
+    .ch{
+      background:#f5f5f3;
+      display:flex;align-items:center;justify-content:center;
+      font-size:11px;font-weight:600;color:#1A1A18;
+      padding:5px 2px;letter-spacing:.2px;text-transform:uppercase;
+      grid-column:span 2;
+      border-bottom:1px solid #1A1A18;
+    }
+    .ch.past{background:#A8A79F;color:#fff}
+    .ch.current{background:#E53935;color:#fff}
+
+    .cd{
+      background:#f5f5f3;
+      display:flex;align-items:center;justify-content:center;
+      font-size:9px;color:#1A1A18;
+      border-right:none;
+      border-bottom:0.5px solid #ccc;
+      line-height:1;
+    }
+    .cd.sat{background:#A8A79F;color:#fff}
+    .cd.sun{background:#1A1A18;color:#fff}
+    .cd.holiday{background:#1A1A18;color:#fff}
+    .cd.today{background:#E53935 !important;color:#fff !important}
+    .cd.week-sep{border-top:1.5px dashed #1A1A18}
+
+    .cell-empty{
+      grid-column:span 2;
+      background:#f7f6f2;
+      border-right:none;
+      border-bottom:none;
+    }
+    .cell-empty.last-empty{border-bottom:0.5px solid #ebebeb}
+
+    .dc{cursor:default}
+    .dc:hover{filter:brightness(0.96)}
+
+    .hstrip{
+      height:10px;border-radius:3px;
+      position:absolute;
+      display:flex;align-items:center;
+      padding:0 3px;overflow:hidden;
+    }
+    .hstrip-lbl{font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1}
+
+    /* ── LOADING / AUTH ── */
+    #overlay{
+      position:fixed;inset:0;
+      background:#F7F6F2;
+      display:flex;flex-direction:column;
+      align-items:center;justify-content:center;
+      gap:20px;z-index:1000;
+    }
+    #overlay h1{font-size:32px;font-weight:300;letter-spacing:4px;color:#1A1A18}
+    #overlay p{font-size:13px;color:#888;text-align:center;max-width:320px;line-height:1.6}
+    .btn{
+      background:#1A1A18;color:#fff;
+      border:none;border-radius:8px;
+      padding:10px 24px;font-size:13px;
+      cursor:pointer;letter-spacing:.5px;
+      transition:opacity .15s;
+    }
+    .btn:hover{opacity:.8}
+    .btn.secondary{background:#f5f5f3;color:#1A1A18;border:0.5px solid #ccc}
+    .spinner{
+      width:20px;height:20px;
+      border:2px solid #e0e0e0;
+      border-top-color:#1A1A18;
+      border-radius:50%;
+      animation:spin .7s linear infinite;
+    }
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    /* ── TOOLTIP ── */
+    #tt{
+      background:#fff;border:1px solid #1A1A18;border-radius:10px;
+      padding:8px 12px;font-size:11px;
+      display:none;max-width:230px;
+      pointer-events:none;
+      position:fixed;z-index:99;
+      box-shadow:0 4px 16px rgba(0,0,0,.1);
+    }
+    .ttd{font-weight:500;margin-bottom:5px;color:#1A1A18}
+    .tte{color:#666;padding:3px 0;border-bottom:0.5px solid #eee;display:flex;gap:5px;align-items:center}
+    .tte:last-child{border-bottom:none}
+    .ttdot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+    .ttt{font-size:10px;color:#aaa;flex-shrink:0}
+
+    /* ── TOAST notifica aggiornamento ── */
+    #toast{
+      position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
+      background:#1A1A18;color:#fff;
+      border-radius:8px;padding:8px 16px;font-size:12px;
+      opacity:0;transition:opacity .3s;pointer-events:none;z-index:200;
+    }
+    #toast.show{opacity:1}
+  </style>
+</head>
+<body>
+
+<!-- Overlay di autenticazione/caricamento -->
+<div id="overlay">
+  <h1>YouC</h1>
+  <p id="overlay-msg">Connetti il tuo Google Calendar per visualizzare gli eventi.</p>
+  <button class="btn" id="auth-btn" onclick="startAuth()">Connetti Google Calendar</button>
+</div>
+
+<div id="app" style="display:none">
+  <div class="grid" id="grid"></div>
+</div>
+
+<div id="tt"></div>
+<div id="toast" id="toast"></div>
+
+<!-- Google API -->
+<script src="https://apis.google.com/js/api.js"></script>
+<script src="https://accounts.google.com/gsi/client"></script>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+// CONFIGURAZIONE — da compilare con le tue credenziali Google
+// Segui le istruzioni nel file README.md per ottenerle
+// ══════════════════════════════════════════════════════════════
+const CONFIG = {
+  CLIENT_ID:     '782903497197-pqn69av3jfa22bc1o7b9rp7rk84cb5bt.apps.googleusercontent.com',
+  API_KEY:       'AIzaSyDiLcN7w8XsD6j4OrAeGf4eO_0ESMAaQRo',
+  CALENDAR_ID:   'primary',  // calendario principale
+  HOLIDAYS_CAL:  'de2b5cf32d2fe58d3394bb3ae25094f5436c32ca469b28075c4023fd92302d32@group.calendar.google.com',
+  SCOPES:        'https://www.googleapis.com/auth/calendar.readonly',
+};
+
+// ══════════════════════════════════════════════════════════════
+// COLORI GOOGLE CALENDAR (personalizzati)
+// ══════════════════════════════════════════════════════════════
+const GC = {
+  1: {bg:'#C8BFFF',fg:'#3C3489'}, // Lavanda
+  2: {bg:'#B2DFB0',fg:'#1B5E20'}, // Salvia — verde pastello
+//  3: {bg:'#B39DDB',fg:'#26215C'}, // Uva
+  3: {bg:'#B39DDB',fg:'#FFFFFF'}, // Uva
+//  4: {bg:'#F8BBD0',fg:'#880E4F'}, // Fenicottero — rosa pastello
+  4: {bg:'#F8BBD0',fg:'#600000'}, // Fenicottero — rosa pastello
+  5: {bg:'#FFF176',fg:'#633806'}, // Banana
+  6: {bg:'#FFAB76',fg:'#712B13'}, // Mandarino
+  7: {bg:'#76D7EA',fg:'#0C447C'}, // Pavone
+  8: {bg:'#B0BEC5',fg:'#2C2C2A'}, // Grafite
+  9: {bg:'#9FA8DA',fg:'#26215C'}, // Mirtillo
+  10:{bg:'#2E7D32',fg:'#ffffff'}, // Basilico — verde acceso
+  11:{bg:'#E53935',fg:'#ffffff'}, // Pomodoro — rosso acceso
+  def:{bg:'#BDBDBD',fg:'#444441'}
+};
+
+// ══════════════════════════════════════════════════════════════
+// STATO
+// ══════════════════════════════════════════════════════════════
+const MS  = ['GEN','FEB','MAR','APR','MAG','GIU','LUG','AGO','SET','OTT','NOV','DIC'];
+const MF  = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+const WD  = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
+
+const td = new Date();
+let windowStart = td.getFullYear()*12 + td.getMonth();
+let windowSize = 12;
+let EVENTS   = [];
+let HOLIDAYS = {};
+let tokenClient;
+
+// ══════════════════════════════════════════════════════════════
+// AUTH GOOGLE
+// ══════════════════════════════════════════════════════════════
+function startAuth() {
+  document.getElementById('auth-btn').disabled = true;
+  document.getElementById('overlay-msg').textContent = 'Caricamento...';
+  gapi.load('client', async () => {
+    await gapi.client.init({ apiKey: CONFIG.API_KEY, discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'] });
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CONFIG.CLIENT_ID,
+      scope: CONFIG.SCOPES,
+      callback: async (resp) => {
+        if (resp.error) { showOverlay('Errore di autenticazione. Riprova.'); return; }
+        localStorage.setItem('youc_token', resp.access_token);
+        hideOverlay();
+        await loadAllData();
+        startAutoRefresh();
+      }
+    });
+    // Prova token salvato
+    const saved = localStorage.getItem('youc_token');
+    if (saved) {
+      gapi.client.setToken({ access_token: saved });
+      hideOverlay();
+      await loadAllData();
+      startAutoRefresh();
+    } else {
+      tokenClient.requestAccessToken({ prompt: 'consent' });
+    }
+  });
+}
+
+function showOverlay(msg) {
+  document.getElementById('overlay').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('overlay-msg').textContent = msg;
+  document.getElementById('auth-btn').disabled = false;
+}
+function hideOverlay() {
+  document.getElementById('overlay').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+}
+
+// ══════════════════════════════════════════════════════════════
+// CARICAMENTO DATI DA GOOGLE CALENDAR
+// ══════════════════════════════════════════════════════════════
+async function loadAllData() {
+  const months = getWindowMonths();
+  const years  = [...new Set(months.map(m => m.y))];
+
+  const allEvents   = [];
+  const allHolidays = {};
+
+  for (const year of years) {
+    const [evts, hols] = await Promise.all([
+      fetchEvents(year),
+      fetchHolidays(year)
+    ]);
+    allEvents.push(...evts);
+    Object.assign(allHolidays, hols);
+  }
+
+  EVENTS   = allEvents;
+  HOLIDAYS = allHolidays;
+  build();
+}
+
+async function fetchEvents(year) {
+  try {
+    const resp = await gapi.client.calendar.events.list({
+      calendarId:   CONFIG.CALENDAR_ID,
+      timeMin:      `${year}-01-01T00:00:00+01:00`,
+      timeMax:      `${year}-12-31T23:59:59+01:00`,
+      singleEvents: true,
+      orderBy:      'startTime',
+      maxResults:   2500,
+    });
+    return parseEvents(resp.result.items || []);
+  } catch(e) {
+    if (e.status === 401) {
+      localStorage.removeItem('youc_token');
+      showOverlay('Sessione scaduta. Effettua di nuovo il login.');
+    }
+    return [];
+  }
+}
+
+async function fetchHolidays(year) {
+  try {
+    const resp = await gapi.client.calendar.events.list({
+      calendarId:   CONFIG.HOLIDAYS_CAL,
+      timeMin:      `${year}-01-01T00:00:00+01:00`,
+      timeMax:      `${year}-12-31T23:59:59+01:00`,
+      singleEvents: true,
+      orderBy:      'startTime',
+      maxResults:   100,
+    });
+    const map = {};
+    (resp.result.items || []).forEach(ev => {
+      const date = ev.start.date || ev.start.dateTime?.slice(0,10);
+      if (date) map[date] = ev.summary || null;
+    });
+    return map;
+  } catch(e) { return {}; }
+}
+
+function parseEvents(items) {
+  const result = [];
+  items.forEach(ev => {
+    let start, end;
+    if (ev.start.date) {
+      // Evento tutto il giorno: end è esclusivo, sottraiamo 1 giorno
+      start = ev.start.date;
+      const endDate = new Date(ev.end.date);
+      endDate.setDate(endDate.getDate() - 1);
+      end = endDate.toISOString().slice(0,10);
+    } else {
+      start = ev.start.dateTime.slice(0,10);
+      end   = ev.end.dateTime.slice(0,10);
+    }
+
+    // Recupera colorId dall'evento o dal calendario
+    const colorId = parseInt(ev.colorId || '0') || null;
+    const color   = colorId ? (GC[colorId] || GC.def) : GC.def;
+
+    // Orario
+    const time = ev.start.dateTime
+      ? ev.start.dateTime.slice(11,16)
+      : null;
+
+    result.push({
+      id:    ev.id,
+      title: ev.summary || '(senza titolo)',
+      color,
+      start,
+      end,
+      time,
+      isMulti: start !== end,
+      startMs: isoToMs(start),
+      endMs:   isoToMs(end),
+    });
+  });
+  return result;
+}
+
+// Aggiornamento automatico ogni 5 minuti
+function startAutoRefresh() {
+  setInterval(async () => {
+    await loadAllData();
+    showToast('Calendario aggiornato');
+  }, 5 * 60 * 1000);
+}
+
+// ══════════════════════════════════════════════════════════════
+// LOGICA CALENDARIO
+// ══════════════════════════════════════════════════════════════
+const SLOT_W=9, STRIP_H=8, GAP=1, DAY=86400000;
+
+function isoToMs(s){const[y,m,d]=s.split('-');return new Date(+y,+m-1,+d).getTime();}
+function msToKey(ms){const d=new Date(ms);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+function fmtDate(y,m,d){return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;}
+function dim(m,y){return new Date(y,m+1,0).getDate();}
+function monthLabel(y,m){return `${MS[m]}'${String(y).slice(-2)}`;}
+
+function getWindowMonths(){
+  const months=[];
+  for(let i=0;i<windowSize;i++){const abs=windowStart+i;months.push({y:Math.floor(abs/12),m:abs%12});}
+  return months;
+}
+
+function assignSlots(events){
+  const multi=events.filter(e=>e.isMulti).sort((a,b)=>a.startMs-b.startMs);
+  const slotEnds=[];
+  multi.forEach(ev=>{
+    let s=0;
+    while(slotEnds[s]!==undefined&&slotEnds[s]>ev.startMs)s++;
+    ev.slot=s;
+    slotEnds[s]=ev.endMs+DAY;
+  });
+}
+
+function buildCellData(months){
+  const years=new Set(months.map(({y})=>y));
+  const evs=EVENTS.filter(ev=>{
+    const sy=new Date(ev.startMs).getFullYear();
+    const ey=new Date(ev.endMs).getFullYear();
+    return years.has(sy)||years.has(ey);
+  }).map(ev=>({...ev}));
+  assignSlots(evs);
+
+  const cellData={};
+  evs.forEach(ev=>{
+    let cur=ev.startMs;
+    while(cur<=ev.endMs){
+      const d=new Date(cur);
+      if(years.has(d.getFullYear())){
+        const key=msToKey(cur);
+        if(!cellData[key])cellData[key]={slots:{},singles:[],all:[]};
+        const isStart=cur===ev.startMs,isEnd=cur===ev.endMs;
+        const pos=isStart&&isEnd?'solo':isStart?'start':isEnd?'end':'mid';
+        const entry={...ev,pos,slot:ev.slot??null};
+        if(ev.isMulti)cellData[key].slots[ev.slot]=entry;
+        else cellData[key].singles.push(entry);
+        cellData[key].all.push(entry);
+      }
+      cur+=DAY;
+    }
+  });
+  return cellData;
+}
+
+// ══════════════════════════════════════════════════════════════
+// RENDERING
+// ══════════════════════════════════════════════════════════════
+function buildEventCell(dk,holidayName,isWeekSep,cellData,CELL_H){
+  const c=document.createElement('div');
+  c.className='cell dc';
+  if(isWeekSep)c.classList.add('week-sep');
+  c.dataset.dk=dk;
+  const cd=cellData[dk];
+  const slotsObj=cd?cd.slots:{};
+  const singles=cd?cd.singles:[];
+  const slotKeys=Object.keys(slotsObj).map(Number);
+  const startMulti=slotKeys.map(s=>slotsObj[s]).filter(e=>e.pos==='start');
+  const maxSlot=slotKeys.length>0?Math.max(...slotKeys):-1;
+  const singlesLeft=maxSlot>=0?(1+(maxSlot+1)*SLOT_W+1):1;
+  const hstrips=[];
+  if(holidayName)hstrips.push({ev:{title:holidayName,color:{bg:'#1A1A18',fg:'#fff'},isMulti:false,slot:null},leftPx:singlesLeft});
+  startMulti.forEach(ev=>hstrips.push({ev,leftPx:1+ev.slot*SLOT_W}));
+  singles.forEach(ev=>hstrips.push({ev,leftPx:singlesLeft}));
+  const total=hstrips.length;
+  const totalH=total*(STRIP_H+GAP)-GAP;
+  const startTop=Math.max(2,Math.round((CELL_H-totalH)/2));
+  const slotTopMap={};
+  hstrips.forEach(({ev},i)=>{if(ev.isMulti&&ev.slot!=null)slotTopMap[ev.slot]=startTop+i*(STRIP_H+GAP);});
+  slotKeys.forEach(s=>{
+    const ev=slotsObj[s];
+    const strip=document.createElement('div');
+    const left=1+s*SLOT_W;
+    strip.style.cssText=`position:absolute;left:${left}px;width:8px;background:${ev.color.bg};z-index:10;`;
+    if(ev.pos==='start'){const top=slotTopMap[s]??startTop;strip.style.top=top+'px';strip.style.bottom='-1px';strip.style.borderRadius='4px 4px 0 0';}
+    else if(ev.pos==='end'){strip.style.top='-1px';strip.style.bottom='2px';strip.style.borderRadius='0 0 4px 4px';}
+    else if(ev.pos==='solo'){const top=slotTopMap[s]??startTop;strip.style.top=top+'px';strip.style.bottom=(CELL_H-top-STRIP_H)+'px';strip.style.borderRadius='4px';}
+    else{strip.style.top='-1px';strip.style.bottom='-1px';}
+    c.appendChild(strip);
+  });
+  hstrips.slice(0,3).forEach(({ev,leftPx},i)=>{
+    const top=startTop+i*(STRIP_H+GAP);
+    const hs=document.createElement('div');
+    hs.className='hstrip';
+    hs.style.cssText=`left:${leftPx}px;right:1px;top:${top}px;background:${ev.color.bg};z-index:20;`;
+    const lbl=document.createElement('span');lbl.className='hstrip-lbl';lbl.style.color=ev.color.fg;lbl.textContent=ev.title;
+    hs.appendChild(lbl);c.appendChild(hs);
+  });
+  if(total>3){
+    const more=document.createElement('div');
+    more.style.cssText=`position:absolute;left:${singlesLeft}px;top:${startTop+3*(STRIP_H+GAP)}px;font-size:9px;color:#aaa;z-index:20;`;
+    more.textContent=`+${total-3}`;c.appendChild(more);
+  }
+  c.addEventListener('mouseenter',showTT);
+  c.addEventListener('mouseleave',hideTT);
+  c.addEventListener('mousemove',moveTT);
+  return c;
+}
+
+function build(){
+  const g=document.getElementById('grid');
+  g.innerHTML='';
+  const months=getWindowMonths();
+  const cellData=buildCellData(months);
+  const todayAbs=td.getFullYear()*12+td.getMonth();
+
+  // Titolo dinamico
+  const first=months[0],last=months[windowSize-1];
+  document.title = first.y===last.y
+    ? `YouC ${first.y}`
+    : `YouC ${first.y}–${last.y}`;
+
+  // Calcola altezza cella dinamica basata sullo spazio disponibile
+  // 32 righe totali (1 header + 31 giorni), meno padding app
+  const appH = window.innerHeight - 24; // 24 = padding top+bottom
+  const CELL_H = Math.floor(appH / 32);
+
+  // Imposta min-height dinamica su tutte le celle tramite CSS variable
+  g.style.setProperty('--ch', CELL_H+'px');
+  g.style.gridTemplateColumns=`repeat(${windowSize}, 14px minmax(0,1fr))`;
+  g.querySelectorAll('.cell,.cd,.cell-empty').forEach(c=>c.style.minHeight=CELL_H+'px');
+
+  // Intestazioni mesi
+  months.forEach(({y,m},i)=>{
+    const abs=y*12+m;
+    const h=document.createElement('div');
+    h.className='cell ch';
+    h.style.minHeight=CELL_H+'px';
+    h.textContent=monthLabel(y,m);
+    if(abs<todayAbs)h.classList.add('past');
+    else if(abs===todayAbs)h.classList.add('current');
+    if(m===0 && i>0)h.style.borderLeft='2px solid #1A1A18';
+    g.appendChild(h);
+  });
+
+  // Righe giorni
+  for(let d=1;d<=31;d++){
+    months.forEach(({y,m})=>{
+      const hasDayInMonth=d<=dim(m,y);
+      const dow=hasDayInMonth?new Date(y,m,d).getDay():null;
+      const isWeekSep=dow===1 && d!==1;
+      if(!hasDayInMonth){
+        const isYearBoundaryEmpty = m===0 && months.findIndex(mo=>mo.y===y&&mo.m===0)>0;
+        const empty=document.createElement('div');
+        empty.className='cell-empty'+(d===31?' last-empty':'');
+        if(d===31)empty.style.borderBottom='1px solid #1A1A18';
+        if(isYearBoundaryEmpty)empty.style.borderLeft='2px solid #1A1A18';
+        empty.style.minHeight=CELL_H+'px';
+        g.appendChild(empty);
+      } else {
+        const dk=fmtDate(y,m,d);
+        const isHoliday=dk in HOLIDAYS;
+        const holidayName=isHoliday?HOLIDAYS[dk]:null;
+        const isToday=td.getFullYear()===y&&td.getMonth()===m&&td.getDate()===d;
+        const isYearBoundary = m===0 && months.findIndex(mo=>mo.y===y&&mo.m===0)>0;
+        const dn=document.createElement('div');
+        dn.className='cell cd';
+        dn.style.minHeight=CELL_H+'px';
+        if(isWeekSep)dn.classList.add('week-sep');
+        if(isYearBoundary)dn.style.borderLeft='2px solid #1A1A18';
+        dn.textContent=d;
+        if(isToday)dn.classList.add('today');
+        else if(isHoliday)dn.classList.add('holiday');
+        else if(dow===6)dn.classList.add('sat');
+        else if(dow===0)dn.classList.add('sun');
+        const isLastDayOfMonth = d===dim(m,y);
+        if(d===31 || isLastDayOfMonth){dn.style.borderBottom='1px solid #1A1A18';}
+        g.appendChild(dn);
+        const evCell=buildEventCell(dk,isHoliday?holidayName:null,isWeekSep,cellData,CELL_H);
+        evCell.style.minHeight=CELL_H+'px';
+        if(d===31 || isLastDayOfMonth)evCell.style.borderBottom='1px solid #1A1A18';
+        g.appendChild(evCell);
+      }
+    });
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// TOOLTIP
+// ══════════════════════════════════════════════════════════════
+function showTT(e){
+  const c=e.currentTarget,dk=c.dataset.dk;
+  const months=getWindowMonths();
+  const cellData=buildCellData(months);
+  const cd=cellData[dk];
+  const holidayName=dk&&(dk in HOLIDAYS)?HOLIDAYS[dk]:null;
+  if(!cd?.all.length&&!holidayName)return;
+  const[y,m,d]=dk.split('-');
+  const dobj=new Date(+y,+m-1,+d);
+  const tt=document.getElementById('tt');
+  const seen=new Set();
+  const items=[];
+  if(holidayName)items.push(`<div class="tte"><div class="ttdot" style="background:#1A1A18"></div><span>${holidayName}</span></div>`);
+  if(cd?.all.length){
+    cd.all.filter(ev=>{if(seen.has(ev.id))return false;seen.add(ev.id);return true;}).forEach(ev=>{
+      const range=ev.isMulti?`<span class="ttt">${ev.start.slice(5).replace('-','/')}→${ev.end.slice(5).replace('-','/')}</span>`:'';
+      const time=ev.time?`<span class="ttt">${ev.time}</span>`:'';
+      items.push(`<div class="tte"><div class="ttdot" style="background:${ev.color.bg}"></div>${time}<span>${ev.title}</span>${range}</div>`);
+    });
+  }
+  tt.innerHTML=`<div class="ttd">${WD[dobj.getDay()]} ${+d} ${MF[+m-1]} ${y}</div>`+items.join('');
+  tt.style.display='block';
+  moveTT(e);
+}
+function moveTT(e){
+  const tt=document.getElementById('tt');
+  let x=e.clientX+14,y=e.clientY+14;
+  if(x+240>window.innerWidth)x=e.clientX-244;
+  if(y+180>window.innerHeight)y=e.clientY-184;
+  tt.style.left=x+'px';tt.style.top=y+'px';
+}
+function hideTT(){document.getElementById('tt').style.display='none';}
+
+// ══════════════════════════════════════════════════════════════
+// NAVIGAZIONE TASTIERA
+// ══════════════════════════════════════════════════════════════
+document.addEventListener('keydown', async e=>{
+  if(e.ctrlKey && e.key==='ArrowLeft'){
+    e.preventDefault();
+    windowStart--;
+    await loadAllData();
+  }
+  if(e.ctrlKey && e.key==='ArrowRight'){
+    e.preventDefault();
+    windowStart++;
+    await loadAllData();
+  }
+  if(e.ctrlKey && e.key==='ArrowUp'){
+    e.preventDefault();
+    if(windowSize>1){windowSize--;await loadAllData();}
+  }
+  if(e.ctrlKey && e.key==='ArrowDown'){
+    e.preventDefault();
+    if(windowSize<24){windowSize++;await loadAllData();}
+  }
+});
+
+// Ridisegna al resize finestra
+window.addEventListener('resize', ()=>build());
+
+// ══════════════════════════════════════════════════════════════
+// TOAST
+// ══════════════════════════════════════════════════════════════
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+// ══════════════════════════════════════════════════════════════
+// SERVICE WORKER
+// ══════════════════════════════════════════════════════════════
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>
