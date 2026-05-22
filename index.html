@@ -739,11 +739,11 @@ window.addEventListener('resize', ()=>build());
       if(Math.abs(dragDx) >= DTAP_DRAG){
         if(dragDx > 0){
           // drag destra → ctrl+→ (avanza finestra)
-          windowStart++;
+          windowStart--;
           await loadAllData();
         } else {
           // drag sinistra → ctrl+← (indietro finestra)
-          windowStart--;
+          windowStart++;
           await loadAllData();
         }
       }
