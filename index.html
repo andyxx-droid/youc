@@ -216,9 +216,10 @@ const WD  = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
 
 const td = new Date();
 let windowStart = td.getFullYear()*12 + td.getMonth();
-let windowSize = 6;
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+const DEFAULT_SIZE  = isMobile ? 6 : 12;
 const DEFAULT_START = td.getFullYear()*12 + td.getMonth();
-const DEFAULT_SIZE  = 6;
+let windowSize = DEFAULT_SIZE;
 let EVENTS   = [];
 let HOLIDAYS = {};
 let NOSCUOLA = new Set(); // Set di date YYYY-MM-DD
@@ -723,12 +724,12 @@ window.addEventListener('resize', ()=>build());
     lastTapTime = now;
     lastTapX    = t.clientX;
 
-    // Conta i tap per il triplo tap
+    // Triplo tap → torna alla visualizzazione iniziale
     tapCount++;
     if(tapTimer) clearTimeout(tapTimer);
     tapTimer = setTimeout(()=>{ tapCount=0; }, DTAP_DELAY*1.5);
     if(tapCount >= 3){
-      tapCount = 0;
+      tapCount=0;
       if(tapTimer){ clearTimeout(tapTimer); tapTimer=null; }
       windowStart = DEFAULT_START;
       windowSize  = DEFAULT_SIZE;
