@@ -683,64 +683,63 @@ window.addEventListener('resize', ()=>build());
 
 // ══════════════════════════════════════════════════════════════
 // NAVIGAZIONE TOUCH (Android)
-// swipe destra       → ctrl+↑ (meno mesi)
-// swipe sinistra     → ctrl+↓ (più mesi)
-// double-tap+drag dx → ctrl+→ (avanza mesi)
-// double-tap+drag sx → ctrl+← (indietro mesi)
+// triplo tap                              → visualizzazione iniziale
+// swipe dx su intestazione mesi          → ctrl+← (indietro finestra)
+// swipe sx su intestazione mesi          → ctrl+→ (avanti finestra)
+// swipe dx fuori intestazione            → ctrl+↑ (meno mesi)
+// swipe sx fuori intestazione            → ctrl+↓ (più mesi)
 // ══════════════════════════════════════════════════════════════
 (function(){
-  const MIN_SWIPE   = 50;   // px minimi per riconoscere uno swipe
-  const DTAP_DELAY  = 300;  // ms massimi tra i due tap del double-tap
-  const DTAP_DRAG   = 40;   // px minimi di drag dopo il double-tap
+  const MIN_SWIPE  = 50;   // px minimi per riconoscere uno swipe
+  const TAP_DELAY  = 300;  // ms massimi tra tap consecutivi
 
-  let touchStartX = 0;
-  let touchStartY = 0;
-  let lastTapTime = 0;
-  let lastTapX    = 0;
-  let doubleTapPending = false;
-  let dragStartX  = 0;
-  let isDragging  = false;
-  let tapCount    = 0;
-  let tapTimer    = null;
+  let touchStartX  = 0;
+  let touchStartY  = 0;
+  let swipeOnHeader = false; // lo swipe è partito sulla riga intestazione mesi?
+  let tapCount     = 0;
+  let tapTimer     = null;
+  let lastTapTime  = 0;
+  let lastTapX     = 0;
+
+  // Restituisce true se il punto (x,y) è sulla riga di intestazione dei mesi
+  function isOnHeader(x, y){
+    const grid = document.getElementById('grid');
+    if(!grid) return false;
+    const rect = grid.getBoundingClientRect();
+    // La riga header è la prima riga della griglia
+    // Prendiamo il primo elemento .ch per conoscerne l'altezza
+    const firstCh = grid.querySelector('.ch');
+    if(!firstCh) return false;
+    const chRect = firstCh.getBoundingClientRect();
+    return y >= chRect.top && y <= chRect.bottom && x >= rect.left && x <= rect.right;
+  }
 
   document.addEventListener('touchstart', e=>{
     if(e.touches.length !== 1) return;
     const t = e.touches[0];
     touchStartX = t.clientX;
     touchStartY = t.clientY;
+    swipeOnHeader = isOnHeader(t.clientX, t.clientY);
 
+    // Triplo tap
     const now = Date.now();
-    const gap = now - lastTapTime;
-
-    if(gap < DTAP_DELAY && Math.abs(t.clientX - lastTapX) < 60){
-      // Secondo tap rapido → double-tap confermato, inizia drag
-      doubleTapPending = true;
-      dragStartX = t.clientX;
-      isDragging = false;
-      e.preventDefault(); // evita zoom
+    if(now - lastTapTime < TAP_DELAY && Math.abs(t.clientX - lastTapX) < 60){
+      tapCount++;
     } else {
-      doubleTapPending = false;
+      tapCount = 1;
     }
     lastTapTime = now;
     lastTapX    = t.clientX;
 
-    // Triplo tap → torna alla visualizzazione iniziale
-    tapCount++;
     if(tapTimer) clearTimeout(tapTimer);
-    tapTimer = setTimeout(()=>{ tapCount=0; }, DTAP_DELAY*1.5);
+    tapTimer = setTimeout(()=>{ tapCount=0; }, TAP_DELAY*2);
+
     if(tapCount >= 3){
-      tapCount=0;
+      tapCount = 0;
       if(tapTimer){ clearTimeout(tapTimer); tapTimer=null; }
       windowStart = DEFAULT_START;
       windowSize  = DEFAULT_SIZE;
       loadAllData();
-      e.preventDefault();
-    }
-  }, {passive: false});
-
-  document.addEventListener('touchmove', e=>{
-    if(doubleTapPending){
-      isDragging = true;
       e.preventDefault();
     }
   }, {passive: false});
@@ -751,37 +750,24 @@ window.addEventListener('resize', ()=>build());
     const dx = t.clientX - touchStartX;
     const dy = t.clientY - touchStartY;
 
-    if(doubleTapPending && isDragging){
-      // Double-tap drag: naviga avanti/indietro
-      const dragDx = t.clientX - dragStartX;
-      if(Math.abs(dragDx) >= DTAP_DRAG){
-        if(dragDx > 0){
-          // drag destra → ctrl+→ (avanza finestra)
-          windowStart--;
-          await loadAllData();
-        } else {
-          // drag sinistra → ctrl+← (indietro finestra)
-          windowStart++;
-          await loadAllData();
-        }
-      }
-      doubleTapPending = false;
-      isDragging = false;
-      return;
-    }
-
-    doubleTapPending = false;
-    isDragging = false;
-
-    // Swipe semplice: solo se orizzontale dominante
+    // Swipe valido solo se orizzontale dominante
     if(Math.abs(dx) < MIN_SWIPE || Math.abs(dx) < Math.abs(dy)) return;
 
-    if(dx > 0){
-      // swipe destra → ctrl+↑ (meno mesi)
-      if(windowSize > 1){ windowSize--; await loadAllData(); }
+    if(swipeOnHeader){
+      // Swipe sulla riga intestazione mesi → sposta finestra
+      if(dx > 0){
+        windowStart--;           // swipe destra → ctrl+←
+      } else {
+        windowStart++;           // swipe sinistra → ctrl+→
+      }
+      await loadAllData();
     } else {
-      // swipe sinistra → ctrl+↓ (più mesi)
-      if(windowSize < 24){ windowSize++; await loadAllData(); }
+      // Swipe fuori intestazione → cambia numero mesi
+      if(dx > 0){
+        if(windowSize > 1){ windowSize--; await loadAllData(); }   // ctrl+↑
+      } else {
+        if(windowSize < 24){ windowSize++; await loadAllData(); }  // ctrl+↓
+      }
     }
   });
 })();
