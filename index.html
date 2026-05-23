@@ -155,11 +155,10 @@
 </head>
 <body>
 
-<!-- Overlay di autenticazione/caricamento -->
+<!-- Overlay di caricamento -->
 <div id="overlay">
   <h1>YouC</h1>
-  <p id="overlay-msg">Connetti il tuo Google Calendar per visualizzare gli eventi.</p>
-  <button class="btn" id="auth-btn" onclick="startAuth()">Connetti Google Calendar</button>
+  <p id="overlay-msg">Caricamento...</p>
 </div>
 
 <div id="app" style="display:none">
@@ -230,30 +229,29 @@ let tokenClient;
 // AUTH GOOGLE
 // ══════════════════════════════════════════════════════════════
 function startAuth() {
-  document.getElementById('auth-btn').disabled = true;
-  document.getElementById('overlay-msg').textContent = 'Caricamento...';
   gapi.load('client', async () => {
     await gapi.client.init({ apiKey: CONFIG.API_KEY, discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'] });
     tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: CONFIG.CLIENT_ID,
       scope: CONFIG.SCOPES,
       callback: async (resp) => {
-        if (resp.error) { showOverlay('Errore di autenticazione. Riprova.'); return; }
+        if (resp.error) { showOverlay('Errore di autenticazione.'); return; }
         localStorage.setItem('youc_token', resp.access_token);
         hideOverlay();
         await loadAllData();
         startAutoRefresh();
       }
     });
-    // Prova token salvato
     const saved = localStorage.getItem('youc_token');
     if (saved) {
+      // Token esistente: carica direttamente
       gapi.client.setToken({ access_token: saved });
       hideOverlay();
       await loadAllData();
       startAutoRefresh();
     } else {
-      tokenClient.requestAccessToken({ prompt: 'consent' });
+      // Prima volta: mostra schermata Google (obbligatoria)
+      tokenClient.requestAccessToken({ prompt: '' });
     }
   });
 }
@@ -262,7 +260,6 @@ function showOverlay(msg) {
   document.getElementById('overlay').style.display = 'flex';
   document.getElementById('app').style.display = 'none';
   document.getElementById('overlay-msg').textContent = msg;
-  document.getElementById('auth-btn').disabled = false;
 }
 function hideOverlay() {
   document.getElementById('overlay').style.display = 'none';
@@ -781,6 +778,9 @@ function showToast(msg){
   t.textContent=msg;t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'),2500);
 }
+
+// Avvio automatico autenticazione
+window.addEventListener('load', () => startAuth());
 
 // ══════════════════════════════════════════════════════════════
 // SERVICE WORKER
