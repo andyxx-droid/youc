@@ -143,6 +143,57 @@
     .ttdot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
     .ttt{font-size:10px;color:#aaa;flex-shrink:0}
 
+
+    /* ── POPUP EVENTO ── */
+    #ev-popup{
+      display:none;position:fixed;inset:0;z-index:500;
+      background:rgba(0,0,0,.45);
+      align-items:center;justify-content:center;
+    }
+    #ev-popup.open{display:flex;}
+    #ev-form{
+      background:#fff;border-radius:12px;
+      padding:24px;width:min(420px,92vw);
+      box-shadow:0 8px 40px rgba(0,0,0,.18);
+      display:flex;flex-direction:column;gap:14px;
+    }
+    #ev-form h2{font-size:15px;font-weight:600;color:#1A1A18;margin:0}
+    #ev-form label{font-size:11px;color:#888;margin-bottom:3px;display:block}
+    #ev-form input[type=text],
+    #ev-form input[type=date],
+    #ev-form input[type=time],
+    #ev-form textarea,
+    #ev-form select{
+      width:100%;border:0.5px solid #ccc;border-radius:6px;
+      padding:7px 10px;font-size:13px;font-family:inherit;
+      outline:none;color:#1A1A18;background:#fff;
+      box-sizing:border-box;
+    }
+    #ev-form textarea{resize:vertical;min-height:60px}
+    #ev-form input:focus,#ev-form textarea:focus,#ev-form select:focus{border-color:#1A1A18}
+    .ev-row{display:flex;gap:10px}
+    .ev-row>div{flex:1}
+    .ev-allday-row{display:flex;align-items:center;gap:8px;font-size:13px;color:#1A1A18}
+    .ev-allday-row input[type=checkbox]{width:16px;height:16px;cursor:pointer}
+    .ev-actions{display:flex;gap:8px;margin-top:4px}
+    .ev-btn{
+      flex:1;border:none;border-radius:6px;padding:9px;
+      font-size:13px;font-family:inherit;cursor:pointer;font-weight:500;
+      transition:opacity .15s;
+    }
+    .ev-btn:hover{opacity:.82}
+    .ev-btn.save{background:#1A1A18;color:#fff}
+    .ev-btn.del{background:#E53935;color:#fff;flex:0 0 auto;padding:9px 16px}
+    .ev-btn.cancel{background:#f5f5f3;color:#1A1A18;border:0.5px solid #ccc}
+    .ev-color-row{display:flex;gap:6px;flex-wrap:wrap}
+    .ev-color-dot{
+      width:22px;height:22px;border-radius:50%;cursor:pointer;
+      border:2px solid transparent;transition:transform .1s;
+    }
+    .ev-color-dot:hover{transform:scale(1.15)}
+    .ev-color-dot.selected{border-color:#1A1A18}
+    #ev-saving{font-size:11px;color:#888;text-align:center;min-height:16px}
+
     /* ── TOAST notifica aggiornamento ── */
     #toast{
       position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
@@ -168,6 +219,59 @@
 <div id="tt"></div>
 <div id="toast" id="toast"></div>
 
+<!-- Popup inserimento/modifica evento -->
+<div id="ev-popup">
+  <div id="ev-form">
+    <h2 id="ev-title-label">Nuovo evento</h2>
+    <div>
+      <label>Titolo</label>
+      <input type="text" id="ev-title" placeholder="Aggiungi titolo"/>
+    </div>
+    <div>
+      <label>Descrizione</label>
+      <textarea id="ev-desc" placeholder="Aggiungi descrizione"></textarea>
+    </div>
+    <div class="ev-allday-row">
+      <input type="checkbox" id="ev-allday" checked onchange="toggleAllDay()"/>
+      <label for="ev-allday" style="margin:0;font-size:13px;cursor:pointer">Tutto il giorno</label>
+    </div>
+    <div class="ev-row">
+      <div>
+        <label>Data inizio</label>
+        <input type="date" id="ev-start-date"/>
+      </div>
+      <div id="ev-start-time-wrap" style="display:none">
+        <label>Ora inizio</label>
+        <input type="time" id="ev-start-time" value="09:00"/>
+      </div>
+    </div>
+    <div class="ev-row">
+      <div>
+        <label>Data fine</label>
+        <input type="date" id="ev-end-date"/>
+      </div>
+      <div id="ev-end-time-wrap" style="display:none">
+        <label>Ora fine</label>
+        <input type="time" id="ev-end-time" value="10:00"/>
+      </div>
+    </div>
+    <div>
+      <label>Colore</label>
+      <div class="ev-color-row" id="ev-color-row"></div>
+    </div>
+    <div>
+      <label>Calendario</label>
+      <select id="ev-cal"></select>
+    </div>
+    <div id="ev-saving"></div>
+    <div class="ev-actions">
+      <button class="ev-btn cancel" onclick="closePopup()">Annulla</button>
+      <button class="ev-btn del" id="ev-del-btn" onclick="deleteEvent()" style="display:none">Elimina</button>
+      <button class="ev-btn save" onclick="saveEvent()">Salva</button>
+    </div>
+  </div>
+</div>
+
 <!-- Google API -->
 <script src="https://apis.google.com/js/api.js"></script>
 <script src="https://accounts.google.com/gsi/client"></script>
@@ -183,7 +287,7 @@ const CONFIG = {
   CALENDAR_ID:   'primary',  // calendario principale
   HOLIDAYS_CAL:  'de2b5cf32d2fe58d3394bb3ae25094f5436c32ca469b28075c4023fd92302d32@group.calendar.google.com',
   NOSCUOLA_CAL:  'no_scuola',  // nome del calendario — verrà cercato per ID automaticamente
-  SCOPES:        'https://www.googleapis.com/auth/calendar.readonly',
+  SCOPES:        'https://www.googleapis.com/auth/calendar',  // lettura + scrittura
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -223,6 +327,7 @@ let EVENTS   = [];
 let HOLIDAYS = {};
 let NOSCUOLA = new Set(); // Set di date YYYY-MM-DD
 let noscuolaCalId = null; // ID del calendario "no scuola" (rilevato automaticamente)
+let calendarList  = []; // lista calendari per il popup
 let tokenClient;
 
 // ══════════════════════════════════════════════════════════════
@@ -401,15 +506,19 @@ function parseEvents(items) {
       : null;
 
     result.push({
-      id:    ev.id,
-      title: ev.summary || '(senza titolo)',
+      id:          ev.id,
+      title:       ev.summary || '(senza titolo)',
+      description: ev.description || '',
       color,
+      colorId:     colorId,
       start,
       end,
       time,
-      isMulti: start !== end,
-      startMs: isoToMs(start),
-      endMs:   isoToMs(end),
+      timeEnd:     ev.end.dateTime ? ev.end.dateTime.slice(11,16) : null,
+      isMulti:     start !== end,
+      startMs:     isoToMs(start),
+      endMs:       isoToMs(end),
+      calendarId:  CONFIG.CALENDAR_ID,
     });
   });
   return result;
@@ -520,7 +629,8 @@ function buildEventCell(dk,holidayName,isWeekSep,cellData,CELL_H){
     const top=startTop+i*(STRIP_H+GAP);
     const hs=document.createElement('div');
     hs.className='hstrip';
-    hs.style.cssText=`left:${leftPx}px;right:1px;top:${top}px;background:${ev.color.bg};z-index:20;`;
+    hs.style.cssText=`left:${leftPx}px;right:1px;top:${top}px;background:${ev.color.bg};z-index:20;cursor:pointer;`;
+    hs.dataset.evid=ev.id;
     const lbl=document.createElement('span');lbl.className='hstrip-lbl';lbl.style.color=ev.color.fg;lbl.textContent=ev.title;
     hs.appendChild(lbl);c.appendChild(hs);
   });
@@ -532,6 +642,11 @@ function buildEventCell(dk,holidayName,isWeekSep,cellData,CELL_H){
   c.addEventListener('mouseenter',showTT);
   c.addEventListener('mouseleave',hideTT);
   c.addEventListener('mousemove',moveTT);
+  c.addEventListener('click', e=>{ if(!e.target.closest('.hstrip')) openPopup(dk, null); });
+  c.querySelectorAll('.hstrip').forEach(hs=>{
+    hs.style.cursor='pointer';
+    hs.addEventListener('click', e=>{ e.stopPropagation(); const evid=hs.dataset.evid; if(evid) openPopup(dk, evid); });
+  });
   return c;
 }
 
@@ -781,6 +896,219 @@ function showToast(msg){
 
 // Avvio automatico autenticazione
 window.addEventListener('load', () => startAuth());
+
+
+// ══════════════════════════════════════════════════════════════
+// POPUP EVENTO
+// ══════════════════════════════════════════════════════════════
+const GC_COLORS_POPUP = [
+  {id:'8', bg:'#B0BEC5', label:'Grafite'},
+  {id:'1', bg:'#C8BFFF', label:'Lavanda'},
+  {id:'2', bg:'#B2DFB0', label:'Salvia'},
+  {id:'3', bg:'#B39DDB', label:'Uva'},
+  {id:'4', bg:'#FF8888', label:'Fenicottero'},
+  {id:'5', bg:'#FFF176', label:'Banana'},
+  {id:'6', bg:'#FFAB76', label:'Mandarino'},
+  {id:'7', bg:'#76D7EA', label:'Pavone'},
+  {id:'9', bg:'#9FA8DA', label:'Mirtillo'},
+  {id:'10',bg:'#2E7D32', label:'Basilico'},
+  {id:'11',bg:'#E53935', label:'Pomodoro'},
+];
+
+let currentEventId   = null;
+let currentCalendarId = null;
+let selectedColorId  = '8';
+
+function buildColorRow(){
+  const row = document.getElementById('ev-color-row');
+  row.innerHTML = '';
+  GC_COLORS_POPUP.forEach(c=>{
+    const dot = document.createElement('div');
+    dot.className = 'ev-color-dot' + (c.id===selectedColorId?' selected':'');
+    dot.style.background = c.bg;
+    dot.title = c.label;
+    dot.dataset.cid = c.id;
+    dot.addEventListener('click',()=>{
+      selectedColorId = c.id;
+      row.querySelectorAll('.ev-color-dot').forEach(d=>d.classList.toggle('selected', d.dataset.cid===c.id));
+    });
+    row.appendChild(dot);
+  });
+}
+
+function buildCalSelect(selectedCal){
+  const sel = document.getElementById('ev-cal');
+  sel.innerHTML = '';
+  // Calendario principale
+  const mainOpt = document.createElement('option');
+  mainOpt.value = CONFIG.CALENDAR_ID;
+  mainOpt.textContent = 'Calendario principale';
+  sel.appendChild(mainOpt);
+  // Festivi
+  const holOpt = document.createElement('option');
+  holOpt.value = CONFIG.HOLIDAYS_CAL;
+  holOpt.textContent = 'Festivi';
+  sel.appendChild(holOpt);
+  // No scuola (se trovato)
+  if(noscuolaCalId){
+    const nsOpt = document.createElement('option');
+    nsOpt.value = noscuolaCalId;
+    nsOpt.textContent = 'No scuola';
+    sel.appendChild(nsOpt);
+  }
+  if(selectedCal) sel.value = selectedCal;
+}
+
+function toggleAllDay(){
+  const allday = document.getElementById('ev-allday').checked;
+  document.getElementById('ev-start-time-wrap').style.display = allday?'none':'block';
+  document.getElementById('ev-end-time-wrap').style.display   = allday?'none':'block';
+}
+
+function openPopup(dk, evId){
+  hideTT();
+  currentEventId    = evId;
+  currentCalendarId = CONFIG.CALENDAR_ID;
+  selectedColorId   = '8';
+
+  buildColorRow();
+  buildCalSelect(CONFIG.CALENDAR_ID);
+  document.getElementById('ev-saving').textContent = '';
+
+  if(evId){
+    // Modifica evento esistente
+    document.getElementById('ev-title-label').textContent = 'Modifica evento';
+    document.getElementById('ev-del-btn').style.display = 'inline-block';
+
+    // Cerca l'evento in EVENTS
+    const ev = EVENTS.find(e=>e.id===evId);
+    if(ev){
+      document.getElementById('ev-title').value = ev.title || '';
+      document.getElementById('ev-desc').value  = ev.description || '';
+      document.getElementById('ev-start-date').value = ev.start;
+      document.getElementById('ev-end-date').value   = ev.end;
+      const allday = !ev.time;
+      document.getElementById('ev-allday').checked = allday;
+      if(!allday){
+        document.getElementById('ev-start-time').value = ev.time || '09:00';
+        document.getElementById('ev-end-time').value   = ev.timeEnd || '10:00';
+      }
+      if(ev.colorId) selectedColorId = String(ev.colorId);
+      currentCalendarId = ev.calendarId || CONFIG.CALENDAR_ID;
+      buildColorRow();
+      buildCalSelect(currentCalendarId);
+      toggleAllDay();
+    }
+  } else {
+    // Nuovo evento
+    document.getElementById('ev-title-label').textContent = 'Nuovo evento';
+    document.getElementById('ev-del-btn').style.display = 'none';
+    document.getElementById('ev-title').value = '';
+    document.getElementById('ev-desc').value  = '';
+    document.getElementById('ev-start-date').value = dk;
+    document.getElementById('ev-end-date').value   = dk;
+    document.getElementById('ev-allday').checked   = true;
+    document.getElementById('ev-start-time').value = '09:00';
+    document.getElementById('ev-end-time').value   = '10:00';
+    toggleAllDay();
+  }
+
+  document.getElementById('ev-popup').classList.add('open');
+  setTimeout(()=>document.getElementById('ev-title').focus(), 50);
+}
+
+function closePopup(){
+  document.getElementById('ev-popup').classList.remove('open');
+  currentEventId = null;
+}
+
+// Chiudi cliccando fuori dal form
+document.getElementById('ev-popup').addEventListener('click', e=>{
+  if(e.target === document.getElementById('ev-popup')) closePopup();
+});
+
+// Chiudi con Escape
+document.addEventListener('keydown', e=>{
+  if(e.key==='Escape') closePopup();
+});
+
+async function saveEvent(){
+  const title = document.getElementById('ev-title').value.trim();
+  if(!title){ document.getElementById('ev-saving').textContent='Inserisci un titolo.'; return; }
+
+  const allday   = document.getElementById('ev-allday').checked;
+  const startDate= document.getElementById('ev-start-date').value;
+  const endDate  = document.getElementById('ev-end-date').value;
+  const startTime= document.getElementById('ev-start-time').value;
+  const endTime  = document.getElementById('ev-end-time').value;
+  const desc     = document.getElementById('ev-desc').value.trim();
+  const calId    = document.getElementById('ev-cal').value;
+
+  if(!startDate||!endDate){ document.getElementById('ev-saving').textContent='Inserisci le date.'; return; }
+
+  document.getElementById('ev-saving').textContent = 'Salvataggio...';
+
+  let eventBody;
+  if(allday){
+    // Fine esclusiva per eventi tutto-il-giorno
+    const endExcl = new Date(endDate);
+    endExcl.setDate(endExcl.getDate()+1);
+    const endExclStr = endExcl.toISOString().slice(0,10);
+    eventBody = {
+      summary:     title,
+      description: desc||undefined,
+      colorId:     selectedColorId,
+      start: { date: startDate },
+      end:   { date: endExclStr },
+    };
+  } else {
+    eventBody = {
+      summary:     title,
+      description: desc||undefined,
+      colorId:     selectedColorId,
+      start: { dateTime: `${startDate}T${startTime}:00`, timeZone:'Europe/Rome' },
+      end:   { dateTime: `${endDate}T${endTime}:00`,   timeZone:'Europe/Rome' },
+    };
+  }
+
+  try {
+    if(currentEventId){
+      await gapi.client.calendar.events.update({
+        calendarId: currentCalendarId,
+        eventId:    currentEventId,
+        resource:   eventBody,
+      });
+    } else {
+      await gapi.client.calendar.events.insert({
+        calendarId: calId,
+        resource:   eventBody,
+      });
+    }
+    closePopup();
+    await loadAllData();
+    showToast(currentEventId ? 'Evento aggiornato' : 'Evento aggiunto');
+  } catch(err){
+    document.getElementById('ev-saving').textContent = 'Errore nel salvataggio.';
+    console.error(err);
+  }
+}
+
+async function deleteEvent(){
+  if(!currentEventId) return;
+  if(!confirm('Eliminare questo evento?')) return;
+  document.getElementById('ev-saving').textContent = 'Eliminazione...';
+  try {
+    await gapi.client.calendar.events.delete({
+      calendarId: currentCalendarId,
+      eventId:    currentEventId,
+    });
+    closePopup();
+    await loadAllData();
+    showToast('Evento eliminato');
+  } catch(err){
+    document.getElementById('ev-saving').textContent = 'Errore nell'eliminazione.';
+  }
+}
 
 // ══════════════════════════════════════════════════════════════
 // SERVICE WORKER
