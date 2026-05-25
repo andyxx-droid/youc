@@ -186,12 +186,7 @@
     .ev-btn.del{background:#E53935;color:#fff;flex:0 0 auto;padding:9px 16px}
     .ev-btn.cancel{background:#f5f5f3;color:#1A1A18;border:0.5px solid #ccc}
     .ev-color-row{display:flex;gap:6px;flex-wrap:wrap}
-    .ev-color-dot{
-      width:22px;height:22px;border-radius:50%;cursor:pointer;
-      border:2px solid transparent;transition:transform .1s;
-    }
-    .ev-color-dot:hover{transform:scale(1.15)}
-    .ev-color-dot.selected{border-color:#1A1A18}
+    #ev-color-select{ font-weight:500; transition: background .15s; }
     #ev-saving{font-size:11px;color:#888;text-align:center;min-height:16px}
 
     /* ── TOAST notifica aggiornamento ── */
@@ -255,9 +250,9 @@
         <input type="time" id="ev-end-time" value="10:00"/>
       </div>
     </div>
-    <div>
-      <label>Colore</label>
-      <div class="ev-color-row" id="ev-color-row"></div>
+    <div id="ev-color-wrap">
+      <label>Categoria</label>
+      <select id="ev-color-select"></select>
     </div>
     <div>
       <label>Calendario</label>
@@ -901,39 +896,48 @@ window.addEventListener('load', () => startAuth());
 // ══════════════════════════════════════════════════════════════
 // POPUP EVENTO
 // ══════════════════════════════════════════════════════════════
-const GC_COLORS_POPUP = [
-  {id:'8', bg:'#B0BEC5', label:'Grafite'},
-  {id:'1', bg:'#C8BFFF', label:'Lavanda'},
-  {id:'2', bg:'#B2DFB0', label:'Salvia'},
-  {id:'3', bg:'#B39DDB', label:'Uva'},
-  {id:'4', bg:'#FF8888', label:'Fenicottero'},
-  {id:'5', bg:'#FFF176', label:'Banana'},
-  {id:'6', bg:'#FFAB76', label:'Mandarino'},
-  {id:'7', bg:'#76D7EA', label:'Pavone'},
-  {id:'9', bg:'#9FA8DA', label:'Mirtillo'},
-  {id:'10',bg:'#2E7D32', label:'Basilico'},
-  {id:'11',bg:'#E53935', label:'Pomodoro'},
+const CATEGORIES = [
+  {id:'8',  bg:'#B0BEC5', label:'Info'},
+  {id:'11', bg:'#E53935', label:'Evento'},
+  {id:'4',  bg:'#F8BBD0', label:'In Famiglia'},
+  {id:'5',  bg:'#FFF176', label:'Viaggio'},
+  {id:'10', bg:'#2E7D32', label:'Cooperatori'},
+  {id:'2',  bg:'#B2DFB0', label:'Lettore'},
+  {id:'3',  bg:'#B39DDB', label:'Di Altri'},
+  {id:'9',  bg:'#9FA8DA', label:'Volley'},
 ];
 
 let currentEventId   = null;
 let currentCalendarId = null;
 let selectedColorId  = '8';
 
-function buildColorRow(){
-  const row = document.getElementById('ev-color-row');
-  row.innerHTML = '';
-  GC_COLORS_POPUP.forEach(c=>{
-    const dot = document.createElement('div');
-    dot.className = 'ev-color-dot' + (c.id===selectedColorId?' selected':'');
-    dot.style.background = c.bg;
-    dot.title = c.label;
-    dot.dataset.cid = c.id;
-    dot.addEventListener('click',()=>{
-      selectedColorId = c.id;
-      row.querySelectorAll('.ev-color-dot').forEach(d=>d.classList.toggle('selected', d.dataset.cid===c.id));
-    });
-    row.appendChild(dot);
+function buildColorSelect(){
+  const sel = document.getElementById('ev-color-select');
+  if(!sel) return;
+  sel.innerHTML = '';
+  CATEGORIES.forEach(c=>{
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.label;
+    opt.style.background = c.bg;
+    opt.style.color = (c.id==='10'||c.id==='11') ? '#fff' : '#1A1A18';
+    sel.appendChild(opt);
   });
+  sel.value = selectedColorId;
+  updateSelectBg();
+  sel.onchange = ()=>{ selectedColorId = sel.value; updateSelectBg(); };
+}
+
+function updateSelectBg(){
+  const sel = document.getElementById('ev-color-select');
+  if(!sel) return;
+  const cat = CATEGORIES.find(c=>c.id===sel.value);
+  if(cat){
+    sel.style.background = cat.bg;
+    sel.style.color = (cat.id==='10'||cat.id==='11') ? '#fff' : '#1A1A18';
+    sel.style.fontWeight = '500';
+  }
+  selectedColorId = sel.value;
 }
 
 function buildCalSelect(selectedCal){
@@ -957,6 +961,12 @@ function buildCalSelect(selectedCal){
     sel.appendChild(nsOpt);
   }
   if(selectedCal) sel.value = selectedCal;
+  const updateColorVis = ()=>{
+    const wrap = document.getElementById('ev-color-wrap');
+    if(wrap) wrap.style.display = sel.value===CONFIG.CALENDAR_ID ? 'block' : 'none';
+  };
+  sel.onchange = updateColorVis;
+  updateColorVis();
 }
 
 function toggleAllDay(){
@@ -1042,6 +1052,8 @@ async function saveEvent(){
   const endTime  = document.getElementById('ev-end-time').value;
   const desc     = document.getElementById('ev-desc').value.trim();
   const calId    = document.getElementById('ev-cal').value;
+  const colorSel = document.getElementById('ev-color-select');
+  if(colorSel && calId===CONFIG.CALENDAR_ID) selectedColorId = colorSel.value;
 
   if(!startDate||!endDate){ document.getElementById('ev-saving').textContent='Inserisci le date.'; return; }
 
