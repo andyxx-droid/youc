@@ -189,48 +189,6 @@
     #ev-color-select{ font-weight:500; transition: background .15s; }
     #ev-saving{font-size:11px;color:#888;text-align:center;min-height:16px}
 
-    /* ── POPUP INFO SOLA LETTURA (touch) ── */
-    #info-popup{
-      display:none;position:fixed;inset:0;z-index:500;
-      background:rgba(0,0,0,.45);
-      align-items:flex-end;justify-content:center;
-    }
-    #info-popup.open{display:flex;}
-    #info-box{
-      background:#fff;border-radius:12px 12px 0 0;
-      padding:20px;width:100%;max-width:500px;
-      max-height:70vh;overflow-y:auto;
-      box-shadow:0 -4px 24px rgba(0,0,0,.15);
-    }
-    #info-box h2{font-size:13px;font-weight:600;color:#888;margin:0 0 12px;text-transform:uppercase;letter-spacing:.5px}
-    .info-ev{border-bottom:0.5px solid #eee;padding:10px 0;}
-    .info-ev:last-child{border-bottom:none}
-    .info-ev-cat{display:flex;align-items:center;gap:8px;margin-bottom:4px}
-    .info-ev-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
-    .info-ev-title{font-size:14px;font-weight:600;color:#1A1A18}
-    .info-ev-desc{font-size:12px;color:#666;margin:3px 0 5px;white-space:pre-wrap}
-    .info-ev-dates{font-size:11px;color:#999}
-    .info-close{margin-top:14px;width:100%;border:none;border-radius:8px;padding:10px;background:#f5f5f3;font-size:14px;cursor:pointer;font-family:inherit;color:#1A1A18}
-    /* POPUP SCELTA EVENTO (tocco lungo su cella con più eventi) */
-    #pick-popup{
-      display:none;position:fixed;inset:0;z-index:500;
-      background:rgba(0,0,0,.45);
-      align-items:flex-end;justify-content:center;
-    }
-    #pick-popup.open{display:flex;}
-    #pick-box{
-      background:#fff;border-radius:12px 12px 0 0;
-      padding:20px;width:100%;max-width:500px;
-      box-shadow:0 -4px 24px rgba(0,0,0,.15);
-    }
-    #pick-box h2{font-size:13px;font-weight:600;color:#888;margin:0 0 12px;text-transform:uppercase;letter-spacing:.5px}
-    .pick-ev{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:0.5px solid #eee;cursor:pointer}
-    .pick-ev:last-of-type{border-bottom:none}
-    .pick-ev:active{background:#f5f5f3}
-    .pick-ev-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
-    .pick-ev-title{font-size:14px;color:#1A1A18}
-    .pick-close{margin-top:14px;width:100%;border:none;border-radius:8px;padding:10px;background:#f5f5f3;font-size:14px;cursor:pointer;font-family:inherit;color:#1A1A18}
-
     /* ── TOAST notifica aggiornamento ── */
     #toast{
       position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
@@ -255,24 +213,6 @@
 
 <div id="tt"></div>
 <div id="toast" id="toast"></div>
-
-<!-- Popup info sola lettura (touch) -->
-<div id="info-popup">
-  <div id="info-box">
-    <h2 id="info-date"></h2>
-    <div id="info-events"></div>
-    <button class="info-close" onclick="closeInfoPopup()">Chiudi</button>
-  </div>
-</div>
-
-<!-- Popup scelta evento da modificare (tocco lungo su cella con più eventi) -->
-<div id="pick-popup">
-  <div id="pick-box">
-    <h2>Quale evento modificare?</h2>
-    <div id="pick-events"></div>
-    <button class="pick-close" onclick="closePickPopup()">Annulla</button>
-  </div>
-</div>
 
 <!-- Popup inserimento/modifica evento -->
 <div id="ev-popup">
@@ -698,14 +638,10 @@ function buildEventCell(dk,holidayName,isWeekSep,cellData,CELL_H){
   c.addEventListener('mouseenter',showTT);
   c.addEventListener('mouseleave',hideTT);
   c.addEventListener('mousemove',moveTT);
-  // Click su PC: cella vuota → nuovo evento, hstrip → modifica
-  const isTouchDevice = ()=>navigator.maxTouchPoints>0;
-  if(!isTouchDevice()){
-    c.addEventListener('click', e=>{ if(!e.target.closest('.hstrip')) openPopup(dk, null); });
-  }
+  c.addEventListener('click', e=>{ if(!e.target.closest('.hstrip')) openPopup(dk, null); });
   c.querySelectorAll('.hstrip').forEach(hs=>{
     hs.style.cursor='pointer';
-    if(!isTouchDevice()) hs.addEventListener('click', e=>{ e.stopPropagation(); const evid=hs.dataset.evid; if(evid) openPopup(dk, evid); });
+    hs.addEventListener('click', e=>{ e.stopPropagation(); const evid=hs.dataset.evid; if(evid) openPopup(dk, evid); });
   });
   return c;
 }
@@ -921,168 +857,29 @@ window.addEventListener('resize', ()=>build());
     const t = e.changedTouches[0];
     const dx = t.clientX - touchStartX;
     const dy = t.clientY - touchStartY;
-    const absDx = Math.abs(dx);
-    const absDy = Math.abs(dy);
-
-    // Tap breve (nessun movimento significativo) → popup info se c'è un evento
-    if(absDx < MIN_SWIPE && absDy < MIN_SWIPE){
-      const cell = document.elementFromPoint(t.clientX, t.clientY)?.closest('.dc');
-      if(cell && cell.dataset.dk){
-        const months=getWindowMonths();
-        const cd=buildCellData(months);
-        const dayData=cd[cell.dataset.dk];
-        if(dayData && dayData.all.length>0){
-          openInfoPopup(cell.dataset.dk, cd);
-        }
-      }
-      return;
-    }
 
     // Swipe valido solo se orizzontale dominante
-    if(absDx < MIN_SWIPE || absDx < absDy) return;
+    if(Math.abs(dx) < MIN_SWIPE || Math.abs(dx) < Math.abs(dy)) return;
 
     if(swipeOnHeader){
-      if(dx > 0){ windowStart--; } else { windowStart++; }
+      // Swipe sulla riga intestazione mesi → sposta finestra
+      if(dx > 0){
+        windowStart--;           // swipe destra → ctrl+←
+      } else {
+        windowStart++;           // swipe sinistra → ctrl+→
+      }
       await loadAllData();
     } else {
+      // Swipe fuori intestazione → cambia numero mesi
       if(dx > 0){
-        if(windowSize > 1){ windowSize--; await loadAllData(); }
+        if(windowSize > 1){ windowSize--; await loadAllData(); }   // ctrl+↑
       } else {
-        if(windowSize < 24){ windowSize++; await loadAllData(); }
+        if(windowSize < 24){ windowSize++; await loadAllData(); }  // ctrl+↓
       }
     }
   });
 })();
 
-
-
-// ══════════════════════════════════════════════════════════════
-// POPUP INFO SOLA LETTURA
-// ══════════════════════════════════════════════════════════════
-function openInfoPopup(dk, cellData){
-  const months=getWindowMonths();
-  const cd=cellData||buildCellData(months);
-  const dayData=cd[dk];
-  if(!dayData||!dayData.all.length) return;
-
-  const [y,m,d]=dk.split('-');
-  const dobj=new Date(+y,+m-1,+d);
-  const WDL=['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
-  document.getElementById('info-date').textContent=`${WDL[dobj.getDay()]} ${+d} ${MF[+m-1]} ${y}`;
-
-  const seen=new Set();
-  const uniq=dayData.all.filter(ev=>{if(seen.has(ev.id))return false;seen.add(ev.id);return true;});
-  const box=document.getElementById('info-events');
-  box.innerHTML='';
-  uniq.forEach(ev=>{
-    const cat=CATEGORIES.find(c=>c.id===String(ev.colorId||'8'));
-    const catLabel=cat?cat.label:'';
-    const catBg=ev.color?.bg||'#B0BEC5';
-    const dateStr=ev.isMulti
-      ? `${ev.start.slice(5).replace('-','/')} → ${ev.end.slice(5).replace('-','/')}`
-      : (ev.time ? `${ev.start.slice(5).replace('-','/')} ${ev.time}${ev.timeEnd?' → '+ev.timeEnd:''}` : ev.start.slice(5).replace('-','/'));
-    const div=document.createElement('div');
-    div.className='info-ev';
-    div.innerHTML=`
-      <div class="info-ev-cat">
-        <div class="info-ev-dot" style="background:${catBg}"></div>
-        <span style="font-size:11px;color:#888">${catLabel}</span>
-        <span class="info-ev-title">${ev.title}</span>
-      </div>
-      ${ev.description?`<div class="info-ev-desc">${ev.description}</div>`:''}
-      <div class="info-ev-dates">${dateStr}</div>
-    `;
-    box.appendChild(div);
-  });
-  document.getElementById('info-popup').classList.add('open');
-}
-function closeInfoPopup(){ document.getElementById('info-popup').classList.remove('open'); }
-document.getElementById('info-popup').addEventListener('click',e=>{ if(e.target===document.getElementById('info-popup')) closeInfoPopup(); });
-
-// ══════════════════════════════════════════════════════════════
-// POPUP SCELTA EVENTO
-// ══════════════════════════════════════════════════════════════
-function openPickPopup(dk, cellData){
-  const months=getWindowMonths();
-  const cd=cellData||buildCellData(months);
-  const dayData=cd[dk];
-  if(!dayData||!dayData.all.length) return;
-  const seen=new Set();
-  const uniq=dayData.all.filter(ev=>{if(seen.has(ev.id))return false;seen.add(ev.id);return true;});
-  const box=document.getElementById('pick-events');
-  box.innerHTML='';
-  uniq.forEach(ev=>{
-    const catBg=ev.color?.bg||'#B0BEC5';
-    const div=document.createElement('div');
-    div.className='pick-ev';
-    div.innerHTML=`<div class="pick-ev-dot" style="background:${catBg}"></div><span class="pick-ev-title">${ev.title}</span>`;
-    div.addEventListener('click',()=>{ closePickPopup(); openPopup(dk, ev.id); });
-    box.appendChild(div);
-  });
-  document.getElementById('pick-popup').classList.add('open');
-}
-function closePickPopup(){ document.getElementById('pick-popup').classList.remove('open'); }
-document.getElementById('pick-popup').addEventListener('click',e=>{ if(e.target===document.getElementById('pick-popup')) closePickPopup(); });
-
-// ══════════════════════════════════════════════════════════════
-// TOCCO LUNGO (per celle su touch)
-// ══════════════════════════════════════════════════════════════
-(function(){
-  let longPressTimer=null;
-  let longPressDk=null;
-  const LONG_PRESS_MS=500;
-
-  function getCellDk(el){
-    const cell=el.closest('.dc');
-    return cell?cell.dataset.dk:null;
-  }
-
-  function getCellData(dk){
-    const months=getWindowMonths();
-    const cd=buildCellData(months);
-    return cd[dk];
-  }
-
-  document.addEventListener('touchstart', e=>{
-    const el=e.target;
-    const dk=getCellDk(el);
-    if(!dk){ clearTimeout(longPressTimer); longPressDk=null; return; }
-    longPressDk=dk;
-    longPressTimer=setTimeout(()=>{
-      longPressTimer=null;
-      const dayData=getCellData(dk);
-      const seen=new Set();
-      const uniq=dayData?dayData.all.filter(ev=>{if(seen.has(ev.id))return false;seen.add(ev.id);return true;}):[];
-      if(uniq.length===0){
-        // Cella vuota → nuovo evento
-        openPopup(dk, null);
-      } else if(uniq.length===1){
-        // Un solo evento → modifica diretto
-        openPopup(dk, uniq[0].id);
-      } else {
-        // Più eventi → popup scelta
-        openPickPopup(dk);
-      }
-    }, LONG_PRESS_MS);
-  },{passive:true});
-
-  document.addEventListener('touchend', e=>{
-    if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
-
-    // Tocco breve su cella con eventi → popup info
-    const el=e.target;
-    const dk=getCellDk(el);
-    if(!dk||dk!==longPressDk) return;
-    longPressDk=null;
-    const dayData=getCellData(dk);
-    if(dayData&&dayData.all.length>0) openInfoPopup(dk);
-  },{passive:true});
-
-  document.addEventListener('touchmove', e=>{
-    if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
-    longPressDk=null;
-  },{passive:true});
-})();
 
 // ══════════════════════════════════════════════════════════════
 // TOAST
