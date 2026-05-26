@@ -1018,35 +1018,48 @@ document.getElementById('pick-popup').addEventListener('click',e=>{ if(e.target=
 // TOCCO LUNGO (per celle su touch)
 // ══════════════════════════════════════════════════════════════
 (function(){
-  let longPressTimer=null;
-  let longPressDk=null;
-  const LONG_PRESS_MS=500;
+  let longPressTimer = null;
+  let longPressDk = null;
+  const LONG_PRESS_MS = 500;
+  
+  // Variabili per calcolare la distanza del tocco
+  let startX = 0;
+  let startY = 0;
+  let isMove = false;
 
   function getCellDk(el){
-    const cell=el.closest('.dc');
-    return cell?cell.dataset.dk:null;
+    const cell = el.closest('.dc');
+    return cell ? cell.dataset.dk : null;
   }
 
   function getCellData(dk){
-    const months=getWindowMonths();
-    const cd=buildCellData(months);
+    const months = getWindowMonths();
+    const cd = buildCellData(months);
     return cd[dk];
   }
 
   document.addEventListener('touchstart', e=>{
-    const el=e.target;
-    const dk=getCellDk(el);
+    if (e.touches.length > 1) return; // Ignora tocchi multipli
+    const el = e.target;
+    const dk = getCellDk(el);
+    
+    // Salva le coordinate iniziali del dito
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    isMove = false;
+
     if(!dk){ clearTimeout(longPressTimer); longPressDk=null; return; }
-    longPressDk=dk;
-    longPressTimer=setTimeout(()=>{
-      longPressTimer=null;
-      const dayData=getCellData(dk);
-      const seen=new Set();
-      const uniq=dayData?dayData.all.filter(ev=>{if(seen.has(ev.id))return false;seen.add(ev.id);return true;}):[];
-      if(uniq.length===0){
+    longPressDk = dk;
+    
+    longPressTimer = setTimeout(()=>{
+      longPressTimer = null;
+      const dayData = getCellData(dk);
+      const seen = new Set();
+      const uniq = dayData ? dayData.all.filter(ev=>{if(seen.has(ev.id))return false;seen.add(ev.id);return true;}) : [];
+      if(uniq.length === 0){
         // Cella vuota → nuovo evento
         openPopup(dk, null);
-      } else if(uniq.length===1){
+      } else if(uniq.length === 1){
         // Un solo evento → modifica diretto
         openPopup(dk, uniq[0].id);
       } else {
@@ -1056,33 +1069,46 @@ document.getElementById('pick-popup').addEventListener('click',e=>{ if(e.target=
     }, LONG_PRESS_MS);
   },{passive:true});
 
-  let touchMoved=false;
-
   document.addEventListener('touchmove', e=>{
-    touchMoved=true;
-    if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
+    if (!longPressTimer && isMove) return; 
+    
+    // Calcola di quanti pixel si è spostato il dito
+    const dx = Math.abs(e.touches[0].clientX - startX);
+    const dy = Math.abs(e.touches[0].clientY - startY);
+    
+    // Soglia di tolleranza di 10 pixel per ignorare i micromovimenti involontari
+    if (dx > 10 || dy > 10) {
+        isMove = true;
+        if(longPressTimer){ 
+          clearTimeout(longPressTimer); 
+          longPressTimer = null; 
+        }
+    }
   },{passive:true});
 
   document.addEventListener('touchend', e=>{
-    const wasMoved=touchMoved;
-    touchMoved=false;
-
     if(longPressTimer){
       clearTimeout(longPressTimer);
-      longPressTimer=null;
-      // Tocco breve (non era long press, non si è mosso)
-      if(!wasMoved){
-        const el=e.target;
-        const dk=getCellDk(el);
+      longPressTimer = null;
+      
+      // Tocco breve (il dito non si è mosso oltre la soglia)
+      if(!isMove){
+        const el = e.target;
+        const dk = getCellDk(el);
         if(dk){
-          const dayData=getCellData(dk);
-          if(dayData&&dayData.all.length>0) openInfoPopup(dk);
+          const dayData = getCellData(dk);
+          
+          if(dayData && dayData.all.length > 0) {
+            // Se ci sono eventi, apri il popup info di sola lettura
+            openInfoPopup(dk);
+          }
         }
       }
     }
-    longPressDk=null;
+    longPressDk = null;
   },{passive:true});
 })();
+
 
 // ══════════════════════════════════════════════════════════════
 // TOAST
