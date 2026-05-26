@@ -921,24 +921,34 @@ window.addEventListener('resize', ()=>build());
     const t = e.changedTouches[0];
     const dx = t.clientX - touchStartX;
     const dy = t.clientY - touchStartY;
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+
+    // Tap breve (nessun movimento significativo) → popup info se c'è un evento
+    if(absDx < MIN_SWIPE && absDy < MIN_SWIPE){
+      const cell = document.elementFromPoint(t.clientX, t.clientY)?.closest('.dc');
+      if(cell && cell.dataset.dk){
+        const months=getWindowMonths();
+        const cd=buildCellData(months);
+        const dayData=cd[cell.dataset.dk];
+        if(dayData && dayData.all.length>0){
+          openInfoPopup(cell.dataset.dk, cd);
+        }
+      }
+      return;
+    }
 
     // Swipe valido solo se orizzontale dominante
-    if(Math.abs(dx) < MIN_SWIPE || Math.abs(dx) < Math.abs(dy)) return;
+    if(absDx < MIN_SWIPE || absDx < absDy) return;
 
     if(swipeOnHeader){
-      // Swipe sulla riga intestazione mesi → sposta finestra
-      if(dx > 0){
-        windowStart--;           // swipe destra → ctrl+←
-      } else {
-        windowStart++;           // swipe sinistra → ctrl+→
-      }
+      if(dx > 0){ windowStart--; } else { windowStart++; }
       await loadAllData();
     } else {
-      // Swipe fuori intestazione → cambia numero mesi
       if(dx > 0){
-        if(windowSize > 1){ windowSize--; await loadAllData(); }   // ctrl+↑
+        if(windowSize > 1){ windowSize--; await loadAllData(); }
       } else {
-        if(windowSize < 24){ windowSize++; await loadAllData(); }  // ctrl+↓
+        if(windowSize < 24){ windowSize++; await loadAllData(); }
       }
     }
   });
@@ -1018,48 +1028,35 @@ document.getElementById('pick-popup').addEventListener('click',e=>{ if(e.target=
 // TOCCO LUNGO (per celle su touch)
 // ══════════════════════════════════════════════════════════════
 (function(){
-  let longPressTimer = null;
-  let longPressDk = null;
-  const LONG_PRESS_MS = 500;
-  
-  // Variabili per calcolare la distanza del tocco
-  let startX = 0;
-  let startY = 0;
-  let isMove = false;
+  let longPressTimer=null;
+  let longPressDk=null;
+  const LONG_PRESS_MS=500;
 
   function getCellDk(el){
-    const cell = el.closest('.dc');
-    return cell ? cell.dataset.dk : null;
+    const cell=el.closest('.dc');
+    return cell?cell.dataset.dk:null;
   }
 
   function getCellData(dk){
-    const months = getWindowMonths();
-    const cd = buildCellData(months);
+    const months=getWindowMonths();
+    const cd=buildCellData(months);
     return cd[dk];
   }
 
   document.addEventListener('touchstart', e=>{
-    if (e.touches.length > 1) return; // Ignora tocchi multipli
-    const el = e.target;
-    const dk = getCellDk(el);
-    
-    // Salva le coordinate iniziali del dito
-    startX = e.touches[0].clientX;
-    startY = e.touches[0].clientY;
-    isMove = false;
-
+    const el=e.target;
+    const dk=getCellDk(el);
     if(!dk){ clearTimeout(longPressTimer); longPressDk=null; return; }
-    longPressDk = dk;
-    
-    longPressTimer = setTimeout(()=>{
-      longPressTimer = null;
-      const dayData = getCellData(dk);
-      const seen = new Set();
-      const uniq = dayData ? dayData.all.filter(ev=>{if(seen.has(ev.id))return false;seen.add(ev.id);return true;}) : [];
-      if(uniq.length === 0){
+    longPressDk=dk;
+    longPressTimer=setTimeout(()=>{
+      longPressTimer=null;
+      const dayData=getCellData(dk);
+      const seen=new Set();
+      const uniq=dayData?dayData.all.filter(ev=>{if(seen.has(ev.id))return false;seen.add(ev.id);return true;}):[];
+      if(uniq.length===0){
         // Cella vuota → nuovo evento
         openPopup(dk, null);
-      } else if(uniq.length === 1){
+      } else if(uniq.length===1){
         // Un solo evento → modifica diretto
         openPopup(dk, uniq[0].id);
       } else {
@@ -1069,46 +1066,23 @@ document.getElementById('pick-popup').addEventListener('click',e=>{ if(e.target=
     }, LONG_PRESS_MS);
   },{passive:true});
 
-  document.addEventListener('touchmove', e=>{
-    if (!longPressTimer && isMove) return; 
-    
-    // Calcola di quanti pixel si è spostato il dito
-    const dx = Math.abs(e.touches[0].clientX - startX);
-    const dy = Math.abs(e.touches[0].clientY - startY);
-    
-    // Soglia di tolleranza di 10 pixel per ignorare i micromovimenti involontari
-    if (dx > 10 || dy > 10) {
-        isMove = true;
-        if(longPressTimer){ 
-          clearTimeout(longPressTimer); 
-          longPressTimer = null; 
-        }
-    }
+  document.addEventListener('touchend', e=>{
+    if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
+
+    // Tocco breve su cella con eventi → popup info
+    const el=e.target;
+    const dk=getCellDk(el);
+    if(!dk||dk!==longPressDk) return;
+    longPressDk=null;
+    const dayData=getCellData(dk);
+    if(dayData&&dayData.all.length>0) openInfoPopup(dk);
   },{passive:true});
 
-  document.addEventListener('touchend', e=>{
-    if(longPressTimer){
-      clearTimeout(longPressTimer);
-      longPressTimer = null;
-      
-      // Tocco breve (il dito non si è mosso oltre la soglia)
-      if(!isMove){
-        const el = e.target;
-        const dk = getCellDk(el);
-        if(dk){
-          const dayData = getCellData(dk);
-          
-          if(dayData && dayData.all.length > 0) {
-            // Se ci sono eventi, apri il popup info di sola lettura
-            openInfoPopup(dk);
-          }
-        }
-      }
-    }
-    longPressDk = null;
+  document.addEventListener('touchmove', e=>{
+    if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
+    longPressDk=null;
   },{passive:true});
 })();
-
 
 // ══════════════════════════════════════════════════════════════
 // TOAST
