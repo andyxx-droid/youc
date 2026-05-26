@@ -1056,20 +1056,30 @@ document.getElementById('pick-popup').addEventListener('click',e=>{ if(e.target=
     }, LONG_PRESS_MS);
   },{passive:true});
 
-  document.addEventListener('touchend', e=>{
-    if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
-
-    // Tocco breve su cella con eventi → popup info
-    const el=e.target;
-    const dk=getCellDk(el);
-    if(!dk||dk!==longPressDk) return;
-    longPressDk=null;
-    const dayData=getCellData(dk);
-    if(dayData&&dayData.all.length>0) openInfoPopup(dk);
-  },{passive:true});
+  let touchMoved=false;
 
   document.addEventListener('touchmove', e=>{
+    touchMoved=true;
     if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; }
+  },{passive:true});
+
+  document.addEventListener('touchend', e=>{
+    const wasMoved=touchMoved;
+    touchMoved=false;
+
+    if(longPressTimer){
+      clearTimeout(longPressTimer);
+      longPressTimer=null;
+      // Tocco breve (non era long press, non si è mosso)
+      if(!wasMoved){
+        const el=e.target;
+        const dk=getCellDk(el);
+        if(dk){
+          const dayData=getCellData(dk);
+          if(dayData&&dayData.all.length>0) openInfoPopup(dk);
+        }
+      }
+    }
     longPressDk=null;
   },{passive:true});
 })();
