@@ -638,11 +638,30 @@ function buildEventCell(dk,holidayName,isWeekSep,cellData,CELL_H){
   c.addEventListener('mouseenter',showTT);
   c.addEventListener('mouseleave',hideTT);
   c.addEventListener('mousemove',moveTT);
-  c.addEventListener('click', e=>{ if(!e.target.closest('.hstrip')) openPopup(dk, null); });
-  c.querySelectorAll('.hstrip').forEach(hs=>{
-    hs.style.cursor='pointer';
-    hs.addEventListener('click', e=>{ e.stopPropagation(); const evid=hs.dataset.evid; if(evid) openPopup(dk, evid); });
+  c.addEventListener('click', e=>{
+    // Conta le hstrip visibili nella cella (eventi con etichetta)
+    const hstrips=[...c.querySelectorAll('.hstrip[data-evid]')];
+    const clickedHstrip=e.target.closest('.hstrip[data-evid]');
+    if(clickedHstrip){
+      // Click diretto su una hstrip specifica
+      if(hstrips.length>1){
+        // Più etichette: apri pick popup
+        openPickFromHstrips(dk, hstrips);
+      } else {
+        openPopup(dk, clickedHstrip.dataset.evid);
+      }
+    } else {
+      // Click sulla cella fuori dalle hstrip
+      if(hstrips.length===0){
+        openPopup(dk, null); // cella vuota → nuovo evento
+      } else if(hstrips.length===1){
+        openPopup(dk, hstrips[0].dataset.evid); // un solo evento → modifica
+      } else {
+        openPickFromHstrips(dk, hstrips); // più eventi → pick
+      }
+    }
   });
+  c.querySelectorAll('.hstrip').forEach(hs=>{ hs.style.cursor='pointer'; });
   return c;
 }
 
