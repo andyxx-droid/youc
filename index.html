@@ -214,6 +214,15 @@
 <div id="tt"></div>
 <div id="toast" id="toast"></div>
 
+<!-- Popup scelta evento -->
+<div id="pick-popup" style="display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.45);align-items:flex-end;justify-content:center;">
+  <div id="pick-box" style="background:#fff;border-radius:12px 12px 0 0;padding:20px;width:100%;max-width:500px;box-shadow:0 -4px 24px rgba(0,0,0,.15);">
+    <h2 style="font-size:13px;font-weight:600;color:#888;margin:0 0 12px;text-transform:uppercase;letter-spacing:.5px">Quale evento modificare?</h2>
+    <div id="pick-events"></div>
+    <button onclick="closePickPopup()" style="margin-top:14px;width:100%;border:none;border-radius:8px;padding:10px;background:#f5f5f3;font-size:14px;cursor:pointer;font-family:inherit;color:#1A1A18">Annulla</button>
+  </div>
+</div>
+
 <!-- Popup inserimento/modifica evento -->
 <div id="ev-popup">
     <div id="ev-form">
@@ -1140,6 +1149,35 @@ async function deleteEvent(){
     document.getElementById('ev-saving').textContent = "Errore nell'eliminazione.";
   }
 }
+
+
+function openPickFromHstrips(dk, hstrips){
+  const box=document.getElementById('pick-events');
+  box.innerHTML='';
+  hstrips.forEach(hs=>{
+    const evid=hs.dataset.evid;
+    const bg=hs.style.background||'#B0BEC5';
+    const title=hs.querySelector('.hstrip-lbl')?.textContent||'(senza titolo)';
+    const div=document.createElement('div');
+    div.style.cssText='display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:0.5px solid #eee;cursor:pointer';
+    div.innerHTML=`<div style="width:12px;height:12px;border-radius:50%;flex-shrink:0;background:${bg}"></div><span style="font-size:14px;color:#1A1A18">${title}</span>`;
+    div.addEventListener('click',()=>{ closePickPopup(); openPopup(dk, evid); });
+    box.appendChild(div);
+  });
+  const popup=document.getElementById('pick-popup');
+  popup.style.display='flex';
+}
+
+function closePickPopup(){
+  const popup=document.getElementById('pick-popup');
+  popup.style.display='none';
+  document.getElementById('pick-events').innerHTML='';
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  const pp=document.getElementById('pick-popup');
+  if(pp) pp.addEventListener('click',e=>{ if(e.target===pp) closePickPopup(); });
+});
 
 // ══════════════════════════════════════════════════════════════
 // SERVICE WORKER
