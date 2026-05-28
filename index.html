@@ -1052,7 +1052,7 @@ function openPopup(dk, evId){
   }
 
   document.getElementById('ev-popup').classList.add('open');
-  setTimeout(()=>document.getElementById('ev-title').focus(), 50);
+  // focus rimosso per evitare tastiera automatica su mobile
 }
 
 function closePopup(){
