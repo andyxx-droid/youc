@@ -345,45 +345,18 @@ let tokenExpiresAt = 0; // timestamp ms della scadenza del token
 // ══════════════════════════════════════════════════════════════
 // AUTH GOOGLE
 // ══════════════════════════════════════════════════════════════
-function startAuth() {
-  gapi.load('client', async () => {
-    await gapi.client.init({ apiKey: CONFIG.API_KEY, discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'] });
-    tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: CONFIG.CLIENT_ID,
-      scope: CONFIG.SCOPES,
-      callback: async (resp) => {
-        if (resp.error) { showOverlay('Errore di autenticazione.'); return; }
-        const expiresIn = (resp.expires_in || 3600) * 1000;
-        tokenExpiresAt = Date.now() + expiresIn - 60000; // 1 min di margine
-        localStorage.setItem('youc_token', resp.access_token);
-        localStorage.setItem('youc_token_exp', String(tokenExpiresAt));
-        gapi.client.setToken({ access_token: resp.access_token });
-        // Salva l'email dell'account per i refresh silenziosi futuri
-        saveLoginHint(resp.access_token);
-        hideOverlay();
-        await loadAllData();
-        startAutoRefresh();
-      }
-    });
-    const saved    = localStorage.getItem('youc_token');
-    const savedExp = parseInt(localStorage.getItem('youc_token_exp') || '0', 10);
-    if (saved && Date.now() < savedExp) {
-      // Token ancora valido: carica direttamente
-      tokenExpiresAt = savedExp;
-      gapi.client.setToken({ access_token: saved });
-      hideOverlay();
-      await loadAllData();
-      startAutoRefresh();
-    } else {
-      // Token scaduto o assente: tenta refresh silenzioso con login_hint
-      const hint = localStorage.getItem('youc_login_hint');
-      tokenClient.requestAccessToken({ prompt: '', login_hint: hint || undefined });
-    }
-  });
+
+// Salva token e scadenza
+function storeToken(resp) {
+  const expiresIn = (resp.expires_in || 3600) * 1000;
+  tokenExpiresAt = Date.now() + expiresIn - 60000; // 1 min di margine
+  localStorage.setItem('youc_token', resp.access_token);
+  localStorage.setItem('youc_token_exp', String(tokenExpiresAt));
+  gapi.client.setToken({ access_token: resp.access_token });
 }
 
-// Recupera l'email dell'account dal token e la salva come login_hint
-async function saveLoginHint(accessToken) {
+// Recupera e salva l'email dell'utente autenticato
+async function fetchAndSaveHint(accessToken) {
   try {
     const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
       headers: { Authorization: 'Bearer ' + accessToken }
@@ -395,46 +368,120 @@ async function saveLoginHint(accessToken) {
   } catch(e) { /* non bloccante */ }
 }
 
-// Rinnova il token silenziosamente, passando login_hint per evitare il selettore account
-function silentTokenRefresh() {
-  return new Promise((resolve, reject) => {
-    const hint = localStorage.getItem('youc_login_hint');
-    tokenClient.callback = async (resp) => {
-      if (resp.error) { reject(new Error(resp.error)); return; }
-      const expiresIn = (resp.expires_in || 3600) * 1000;
-      tokenExpiresAt = Date.now() + expiresIn - 60000;
-      localStorage.setItem('youc_token', resp.access_token);
-      localStorage.setItem('youc_token_exp', String(tokenExpiresAt));
-      gapi.client.setToken({ access_token: resp.access_token });
-      resolve();
-    };
-    tokenClient.requestAccessToken({ prompt: '', login_hint: hint || undefined });
+// Inizializzazione
+function startAuth() {
+  gapi.load('client', async () => {
+    await gapi.client.init({
+      apiKey: CONFIG.API_KEY,
+      discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest']
+    });
+
+    const saved    = localStorage.getItem('youc_token');
+    const savedExp = parseInt(localStorage.getItem('youc_token_exp') || '0', 10);
+    const hint     = localStorage.getItem('youc_login_hint');
+
+    if (saved && Date.now() < savedExp) {
+      // Token ancora valido: usa subito
+      tokenExpiresAt = savedExp;
+      gapi.client.setToken({ access_token: saved });
+      initTokenClient(hint);
+      hideOverlay();
+      await loadAllData();
+      startAutoRefresh();
+      return;
+    }
+
+    if (hint) {
+      // Account già noto: tenta refresh totalmente silenzioso (prompt:none = zero UI)
+      const ok = await trySilentRefresh(hint);
+      if (ok) {
+        hideOverlay();
+        await loadAllData();
+        startAutoRefresh();
+        return;
+      }
+      // Il silent refresh non è riuscito: apri il popup già pre-selezionato sull'account giusto
+      // ma usando prompt:'select_account' che passa l'hint — l'utente clicca solo "Continua"
+    }
+
+    // Prima volta (o dopo revoca permessi): login interattivo completo
+    interactiveLogin(hint);
   });
 }
 
-// Assicura che il token sia valido prima di ogni chiamata API;
-// se sta per scadere (o è già scaduto) lo rinnova silenziosamente.
+// Crea tokenClient con hint fisso nell'init (è qui che GIS lo legge)
+function initTokenClient(hint) {
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CONFIG.CLIENT_ID,
+    scope:     CONFIG.SCOPES,
+    hint:      hint || undefined,
+    callback:  () => {} // sovrascritta di volta in volta
+  });
+}
+
+// Tenta un refresh completamente silenzioso (nessuna UI).
+// Restituisce true se ha funzionato, false altrimenti.
+function trySilentRefresh(hint) {
+  return new Promise((resolve) => {
+    // Timeout di sicurezza: se GIS non risponde entro 5s considera fallito
+    const timer = setTimeout(() => resolve(false), 5000);
+
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: CONFIG.CLIENT_ID,
+      scope:     CONFIG.SCOPES,
+      hint:      hint,
+      prompt:    '',          // stringa vuota = nessun prompt
+      callback:  (resp) => {
+        clearTimeout(timer);
+        if (resp.error || !resp.access_token) { resolve(false); return; }
+        storeToken(resp);
+        tokenClient = client;
+        tokenClient.callback = () => {};
+        resolve(true);
+      }
+    });
+    client.requestAccessToken({ prompt: '' });
+  });
+}
+
+// Login interattivo con hint pre-impostato (l'utente vede già l'account giusto)
+function interactiveLogin(hint) {
+  initTokenClient(hint);
+  tokenClient.callback = async (resp) => {
+    if (resp.error) { showOverlay('Errore di autenticazione.'); return; }
+    storeToken(resp);
+    if (!localStorage.getItem('youc_login_hint')) {
+      await fetchAndSaveHint(resp.access_token);
+      // Ricrea con hint ora disponibile per i refresh futuri
+      initTokenClient(localStorage.getItem('youc_login_hint'));
+    }
+    hideOverlay();
+    await loadAllData();
+    startAutoRefresh();
+  };
+  tokenClient.requestAccessToken({ prompt: '' });
+}
+
+// Assicura token valido prima di ogni chiamata API; rinnova silenziosamente se scaduto
 async function ensureToken() {
   if (Date.now() < tokenExpiresAt) return; // ancora valido
-  try {
-    await silentTokenRefresh();
-  } catch(e) {
-    // Refresh silenzioso fallito: mostra il selettore account una sola volta
-    const hint = localStorage.getItem('youc_login_hint');
-    await new Promise((resolve) => {
-      tokenClient.callback = async (resp) => {
-        if (!resp.error) {
-          const expiresIn = (resp.expires_in || 3600) * 1000;
-          tokenExpiresAt = Date.now() + expiresIn - 60000;
-          localStorage.setItem('youc_token', resp.access_token);
-          localStorage.setItem('youc_token_exp', String(tokenExpiresAt));
-          gapi.client.setToken({ access_token: resp.access_token });
-        }
-        resolve();
-      };
-      tokenClient.requestAccessToken({ prompt: 'select_account', login_hint: hint || undefined });
-    });
+
+  const hint = localStorage.getItem('youc_login_hint');
+  if (hint) {
+    const ok = await trySilentRefresh(hint);
+    if (ok) return;
   }
+
+  // Fallback: login interattivo (non dovrebbe mai succedere in uso normale)
+  await new Promise((resolve) => {
+    const hint = localStorage.getItem('youc_login_hint');
+    initTokenClient(hint);
+    tokenClient.callback = async (resp) => {
+      if (!resp.error) storeToken(resp);
+      resolve();
+    };
+    tokenClient.requestAccessToken({ prompt: '' });
+  });
 }
 
 function showOverlay(msg) {
