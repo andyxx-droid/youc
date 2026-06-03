@@ -353,12 +353,13 @@ function startAuth() {
       scope: CONFIG.SCOPES,
       callback: async (resp) => {
         if (resp.error) { showOverlay('Errore di autenticazione.'); return; }
-        // Salva token con scadenza (i token Google durano 3600s)
         const expiresIn = (resp.expires_in || 3600) * 1000;
         tokenExpiresAt = Date.now() + expiresIn - 60000; // 1 min di margine
         localStorage.setItem('youc_token', resp.access_token);
         localStorage.setItem('youc_token_exp', String(tokenExpiresAt));
         gapi.client.setToken({ access_token: resp.access_token });
+        // Salva l'email dell'account per i refresh silenziosi futuri
+        saveLoginHint(resp.access_token);
         hideOverlay();
         await loadAllData();
         startAutoRefresh();
@@ -374,15 +375,30 @@ function startAuth() {
       await loadAllData();
       startAutoRefresh();
     } else {
-      // Token scaduto o assente: rinnova silenziosamente
-      tokenClient.requestAccessToken({ prompt: '' });
+      // Token scaduto o assente: tenta refresh silenzioso con login_hint
+      const hint = localStorage.getItem('youc_login_hint');
+      tokenClient.requestAccessToken({ prompt: '', login_hint: hint || undefined });
     }
   });
 }
 
-// Rinnova il token in modo silenzioso (senza popup) e attende il risultato
+// Recupera l'email dell'account dal token e la salva come login_hint
+async function saveLoginHint(accessToken) {
+  try {
+    const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: 'Bearer ' + accessToken }
+    });
+    if (r.ok) {
+      const info = await r.json();
+      if (info.email) localStorage.setItem('youc_login_hint', info.email);
+    }
+  } catch(e) { /* non bloccante */ }
+}
+
+// Rinnova il token silenziosamente, passando login_hint per evitare il selettore account
 function silentTokenRefresh() {
   return new Promise((resolve, reject) => {
+    const hint = localStorage.getItem('youc_login_hint');
     tokenClient.callback = async (resp) => {
       if (resp.error) { reject(new Error(resp.error)); return; }
       const expiresIn = (resp.expires_in || 3600) * 1000;
@@ -392,7 +408,7 @@ function silentTokenRefresh() {
       gapi.client.setToken({ access_token: resp.access_token });
       resolve();
     };
-    tokenClient.requestAccessToken({ prompt: '' });
+    tokenClient.requestAccessToken({ prompt: '', login_hint: hint || undefined });
   });
 }
 
@@ -403,7 +419,8 @@ async function ensureToken() {
   try {
     await silentTokenRefresh();
   } catch(e) {
-    // Se il refresh silenzioso fallisce, chiedi login esplicito
+    // Refresh silenzioso fallito: mostra il selettore account una sola volta
+    const hint = localStorage.getItem('youc_login_hint');
     await new Promise((resolve) => {
       tokenClient.callback = async (resp) => {
         if (!resp.error) {
@@ -415,7 +432,7 @@ async function ensureToken() {
         }
         resolve();
       };
-      tokenClient.requestAccessToken({ prompt: 'consent' });
+      tokenClient.requestAccessToken({ prompt: 'select_account', login_hint: hint || undefined });
     });
   }
 }
