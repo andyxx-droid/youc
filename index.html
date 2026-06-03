@@ -340,6 +340,7 @@ let NOSCUOLA = new Set(); // Set di date YYYY-MM-DD
 let noscuolaCalId = null; // ID del calendario "no scuola" (rilevato automaticamente)
 let calendarList  = []; // lista calendari per il popup
 let tokenClient;
+let tokenExpiresAt = 0; // timestamp ms della scadenza del token
 
 // ══════════════════════════════════════════════════════════════
 // AUTH GOOGLE
@@ -352,24 +353,71 @@ function startAuth() {
       scope: CONFIG.SCOPES,
       callback: async (resp) => {
         if (resp.error) { showOverlay('Errore di autenticazione.'); return; }
+        // Salva token con scadenza (i token Google durano 3600s)
+        const expiresIn = (resp.expires_in || 3600) * 1000;
+        tokenExpiresAt = Date.now() + expiresIn - 60000; // 1 min di margine
         localStorage.setItem('youc_token', resp.access_token);
+        localStorage.setItem('youc_token_exp', String(tokenExpiresAt));
+        gapi.client.setToken({ access_token: resp.access_token });
         hideOverlay();
         await loadAllData();
         startAutoRefresh();
       }
     });
-    const saved = localStorage.getItem('youc_token');
-    if (saved) {
-      // Token esistente: carica direttamente
+    const saved    = localStorage.getItem('youc_token');
+    const savedExp = parseInt(localStorage.getItem('youc_token_exp') || '0', 10);
+    if (saved && Date.now() < savedExp) {
+      // Token ancora valido: carica direttamente
+      tokenExpiresAt = savedExp;
       gapi.client.setToken({ access_token: saved });
       hideOverlay();
       await loadAllData();
       startAutoRefresh();
     } else {
-      // Prima volta: mostra schermata Google (obbligatoria)
+      // Token scaduto o assente: rinnova silenziosamente
       tokenClient.requestAccessToken({ prompt: '' });
     }
   });
+}
+
+// Rinnova il token in modo silenzioso (senza popup) e attende il risultato
+function silentTokenRefresh() {
+  return new Promise((resolve, reject) => {
+    tokenClient.callback = async (resp) => {
+      if (resp.error) { reject(new Error(resp.error)); return; }
+      const expiresIn = (resp.expires_in || 3600) * 1000;
+      tokenExpiresAt = Date.now() + expiresIn - 60000;
+      localStorage.setItem('youc_token', resp.access_token);
+      localStorage.setItem('youc_token_exp', String(tokenExpiresAt));
+      gapi.client.setToken({ access_token: resp.access_token });
+      resolve();
+    };
+    tokenClient.requestAccessToken({ prompt: '' });
+  });
+}
+
+// Assicura che il token sia valido prima di ogni chiamata API;
+// se sta per scadere (o è già scaduto) lo rinnova silenziosamente.
+async function ensureToken() {
+  if (Date.now() < tokenExpiresAt) return; // ancora valido
+  try {
+    await silentTokenRefresh();
+  } catch(e) {
+    // Se il refresh silenzioso fallisce, chiedi login esplicito
+    await new Promise((resolve) => {
+      tokenClient.callback = async (resp) => {
+        if (!resp.error) {
+          const expiresIn = (resp.expires_in || 3600) * 1000;
+          tokenExpiresAt = Date.now() + expiresIn - 60000;
+          localStorage.setItem('youc_token', resp.access_token);
+          localStorage.setItem('youc_token_exp', String(tokenExpiresAt));
+          gapi.client.setToken({ access_token: resp.access_token });
+        }
+        resolve();
+      };
+      tokenClient.requestAccessToken({ prompt: 'consent' });
+    });
+  }
 }
 
 function showOverlay(msg) {
@@ -413,6 +461,7 @@ async function loadAllData() {
 
 async function fetchEvents(year) {
   try {
+    await ensureToken();
     const resp = await gapi.client.calendar.events.list({
       calendarId:   CONFIG.CALENDAR_ID,
       timeMin:      `${year}-01-01T00:00:00+01:00`,
@@ -423,10 +472,7 @@ async function fetchEvents(year) {
     });
     return parseEvents(resp.result.items || []);
   } catch(e) {
-    if (e.status === 401) {
-      localStorage.removeItem('youc_token');
-      showOverlay('Sessione scaduta. Effettua di nuovo il login.');
-    }
+    console.warn('fetchEvents error:', e);
     return [];
   }
 }
@@ -434,6 +480,7 @@ async function fetchEvents(year) {
 async function findNoScuolaCalId() {
   if (noscuolaCalId) return noscuolaCalId;
   try {
+    await ensureToken();
     const resp = await gapi.client.calendar.calendarList.list();
     const cal = (resp.result.items || []).find(c =>
       c.summary && c.summary.toLowerCase().replace(/\s/g,'').includes('noscuola')
@@ -475,6 +522,7 @@ async function fetchNoScuola(year) {
 
 async function fetchHolidays(year) {
   try {
+    await ensureToken();
     const resp = await gapi.client.calendar.events.list({
       calendarId:   CONFIG.HOLIDAYS_CAL,
       timeMin:      `${year}-01-01T00:00:00+01:00`,
@@ -541,6 +589,11 @@ function startAutoRefresh() {
     await loadAllData();
     showToast('Calendario aggiornato');
   }, 5 * 60 * 1000);
+
+  // Rinnovo preventivo del token ogni 45 minuti (scade a 60)
+  setInterval(async () => {
+    try { await silentTokenRefresh(); } catch(e) { console.warn('Token refresh silenzioso fallito:', e); }
+  }, 45 * 60 * 1000);
 }
 
 // ══════════════════════════════════════════════════════════════
