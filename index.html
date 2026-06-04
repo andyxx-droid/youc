@@ -284,7 +284,6 @@
 
 <!-- Google API -->
 <script src="https://apis.google.com/js/api.js"></script>
-<script src="https://accounts.google.com/gsi/client"></script>
 
 <script>
 // ══════════════════════════════════════════════════════════════
@@ -339,149 +338,171 @@ let HOLIDAYS = {};
 let NOSCUOLA = new Set(); // Set di date YYYY-MM-DD
 let noscuolaCalId = null; // ID del calendario "no scuola" (rilevato automaticamente)
 let calendarList  = []; // lista calendari per il popup
-let tokenClient;
 let tokenExpiresAt = 0; // timestamp ms della scadenza del token
 
 // ══════════════════════════════════════════════════════════════
-// AUTH GOOGLE
+// AUTH GOOGLE — flusso PKCE redirect (compatibile PWA Android)
+// Nessun popup: tutto avviene con redirect nella stessa scheda.
+// Il refresh token viene salvato in localStorage e usato per
+// rinnovare l'access token senza mai richiedere interazione.
 // ══════════════════════════════════════════════════════════════
 
-// Salva token e scadenza
-function storeToken(resp) {
-  const expiresIn = (resp.expires_in || 3600) * 1000;
-  tokenExpiresAt = Date.now() + expiresIn - 60000; // 1 min di margine
-  localStorage.setItem('youc_token', resp.access_token);
+const AUTH_ENDPOINT  = 'https://accounts.google.com/o/oauth2/v2/auth';
+const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
+const REDIRECT_URI   = window.location.origin + window.location.pathname;
+
+// ── Utilità PKCE ──────────────────────────────────────────────
+function base64url(buf) {
+  return btoa(String.fromCharCode(...new Uint8Array(buf)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+async function generatePKCE() {
+  const verifier  = base64url(crypto.getRandomValues(new Uint8Array(32)));
+  const digest    = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  const challenge = base64url(digest);
+  return { verifier, challenge };
+}
+
+// ── Salva/legge token ─────────────────────────────────────────
+function storeTokens({ access_token, refresh_token, expires_in }) {
+  tokenExpiresAt = Date.now() + (expires_in || 3600) * 1000 - 60000;
+  localStorage.setItem('youc_token',     access_token);
   localStorage.setItem('youc_token_exp', String(tokenExpiresAt));
-  gapi.client.setToken({ access_token: resp.access_token });
+  if (refresh_token) localStorage.setItem('youc_refresh_token', refresh_token);
+  gapi.client.setToken({ access_token });
 }
 
-// Recupera e salva l'email dell'utente autenticato
-async function fetchAndSaveHint(accessToken) {
-  try {
-    const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-      headers: { Authorization: 'Bearer ' + accessToken }
-    });
-    if (r.ok) {
-      const info = await r.json();
-      if (info.email) localStorage.setItem('youc_login_hint', info.email);
-    }
-  } catch(e) { /* non bloccante */ }
+// ── Refresh silenzioso con refresh_token ──────────────────────
+async function refreshAccessToken() {
+  const refreshToken = localStorage.getItem('youc_refresh_token');
+  if (!refreshToken) throw new Error('no_refresh_token');
+
+  const resp = await fetch(TOKEN_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id:     CONFIG.CLIENT_ID,
+      grant_type:    'refresh_token',
+      refresh_token: refreshToken,
+    })
+  });
+  if (!resp.ok) throw new Error('refresh_failed');
+  const data = await resp.json();
+  if (data.error) throw new Error(data.error);
+  storeTokens(data);
 }
 
-// Inizializzazione
-function startAuth() {
-  gapi.load('client', async () => {
-    await gapi.client.init({
-      apiKey: CONFIG.API_KEY,
-      discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest']
-    });
+// ── Assicura token valido prima di ogni chiamata API ──────────
+async function ensureToken() {
+  if (Date.now() < tokenExpiresAt) return; // ancora valido
+  await refreshAccessToken();              // silenzioso, nessuna UI
+}
 
-    const saved    = localStorage.getItem('youc_token');
-    const savedExp = parseInt(localStorage.getItem('youc_token_exp') || '0', 10);
-    const hint     = localStorage.getItem('youc_login_hint');
+// ── Avvio autenticazione ──────────────────────────────────────
+async function startAuth() {
+  await new Promise(resolve => gapi.load('client', resolve));
+  await gapi.client.init({
+    apiKey: CONFIG.API_KEY,
+    discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest']
+  });
 
-    if (saved && Date.now() < savedExp) {
-      // Token ancora valido: usa subito
-      tokenExpiresAt = savedExp;
-      gapi.client.setToken({ access_token: saved });
-      initTokenClient(hint);
+  // 1. Ritorno dal redirect OAuth → scambia il codice con i token
+  const params = new URLSearchParams(window.location.search);
+  const code   = params.get('code');
+  const state  = params.get('state');
+  if (code && state === localStorage.getItem('youc_oauth_state')) {
+    history.replaceState({}, '', window.location.pathname); // pulisce URL
+    await exchangeCode(code);
+    hideOverlay();
+    await loadAllData();
+    startAutoRefresh();
+    return;
+  }
+
+  // 2. Token access ancora valido
+  const saved    = localStorage.getItem('youc_token');
+  const savedExp = parseInt(localStorage.getItem('youc_token_exp') || '0', 10);
+  if (saved && Date.now() < savedExp) {
+    tokenExpiresAt = savedExp;
+    gapi.client.setToken({ access_token: saved });
+    hideOverlay();
+    await loadAllData();
+    startAutoRefresh();
+    return;
+  }
+
+  // 3. Refresh token disponibile → rinnova silenziosamente
+  if (localStorage.getItem('youc_refresh_token')) {
+    try {
+      await refreshAccessToken();
       hideOverlay();
       await loadAllData();
       startAutoRefresh();
       return;
+    } catch(e) {
+      // Refresh fallito (token revocato): riparte da login
+      localStorage.removeItem('youc_refresh_token');
     }
-
-    if (hint) {
-      // Account già noto: tenta refresh totalmente silenzioso (prompt:none = zero UI)
-      const ok = await trySilentRefresh(hint);
-      if (ok) {
-        hideOverlay();
-        await loadAllData();
-        startAutoRefresh();
-        return;
-      }
-      // Il silent refresh non è riuscito: apri il popup già pre-selezionato sull'account giusto
-      // ma usando prompt:'select_account' che passa l'hint — l'utente clicca solo "Continua"
-    }
-
-    // Prima volta (o dopo revoca permessi): login interattivo completo
-    interactiveLogin(hint);
-  });
-}
-
-// Crea tokenClient con hint fisso nell'init (è qui che GIS lo legge)
-function initTokenClient(hint) {
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: CONFIG.CLIENT_ID,
-    scope:     CONFIG.SCOPES,
-    hint:      hint || undefined,
-    callback:  () => {} // sovrascritta di volta in volta
-  });
-}
-
-// Tenta un refresh completamente silenzioso (nessuna UI).
-// Restituisce true se ha funzionato, false altrimenti.
-function trySilentRefresh(hint) {
-  return new Promise((resolve) => {
-    // Timeout di sicurezza: se GIS non risponde entro 5s considera fallito
-    const timer = setTimeout(() => resolve(false), 5000);
-
-    const client = google.accounts.oauth2.initTokenClient({
-      client_id: CONFIG.CLIENT_ID,
-      scope:     CONFIG.SCOPES,
-      hint:      hint,
-      prompt:    '',          // stringa vuota = nessun prompt
-      callback:  (resp) => {
-        clearTimeout(timer);
-        if (resp.error || !resp.access_token) { resolve(false); return; }
-        storeToken(resp);
-        tokenClient = client;
-        tokenClient.callback = () => {};
-        resolve(true);
-      }
-    });
-    client.requestAccessToken({ prompt: '' });
-  });
-}
-
-// Login interattivo con hint pre-impostato (l'utente vede già l'account giusto)
-function interactiveLogin(hint) {
-  initTokenClient(hint);
-  tokenClient.callback = async (resp) => {
-    if (resp.error) { showOverlay('Errore di autenticazione.'); return; }
-    storeToken(resp);
-    if (!localStorage.getItem('youc_login_hint')) {
-      await fetchAndSaveHint(resp.access_token);
-      // Ricrea con hint ora disponibile per i refresh futuri
-      initTokenClient(localStorage.getItem('youc_login_hint'));
-    }
-    hideOverlay();
-    await loadAllData();
-    startAutoRefresh();
-  };
-  tokenClient.requestAccessToken({ prompt: '' });
-}
-
-// Assicura token valido prima di ogni chiamata API; rinnova silenziosamente se scaduto
-async function ensureToken() {
-  if (Date.now() < tokenExpiresAt) return; // ancora valido
-
-  const hint = localStorage.getItem('youc_login_hint');
-  if (hint) {
-    const ok = await trySilentRefresh(hint);
-    if (ok) return;
   }
 
-  // Fallback: login interattivo (non dovrebbe mai succedere in uso normale)
-  await new Promise((resolve) => {
-    const hint = localStorage.getItem('youc_login_hint');
-    initTokenClient(hint);
-    tokenClient.callback = async (resp) => {
-      if (!resp.error) storeToken(resp);
-      resolve();
-    };
-    tokenClient.requestAccessToken({ prompt: '' });
+  // 4. Prima volta (o dopo revoca): redirect a Google — nessun popup
+  await redirectToGoogle();
+}
+
+// ── Redirect alla pagina di login Google ──────────────────────
+async function redirectToGoogle() {
+  const { verifier, challenge } = await generatePKCE();
+  const state = base64url(crypto.getRandomValues(new Uint8Array(16)));
+  localStorage.setItem('youc_pkce_verifier', verifier);
+  localStorage.setItem('youc_oauth_state',   state);
+
+  const url = new URL(AUTH_ENDPOINT);
+  url.searchParams.set('client_id',             CONFIG.CLIENT_ID);
+  url.searchParams.set('redirect_uri',          REDIRECT_URI);
+  url.searchParams.set('response_type',         'code');
+  url.searchParams.set('scope',                 CONFIG.SCOPES + ' offline_access');
+  url.searchParams.set('code_challenge',        challenge);
+  url.searchParams.set('code_challenge_method', 'S256');
+  url.searchParams.set('state',                 state);
+  url.searchParams.set('access_type',           'offline');
+  url.searchParams.set('prompt',                'consent'); // necessario per ottenere refresh_token
+  const hint = localStorage.getItem('youc_login_hint');
+  if (hint) url.searchParams.set('login_hint', hint);
+
+  window.location.href = url.toString(); // redirect nella stessa scheda
+}
+
+// ── Scambio codice → token ────────────────────────────────────
+async function exchangeCode(code) {
+  const verifier = localStorage.getItem('youc_pkce_verifier');
+  localStorage.removeItem('youc_pkce_verifier');
+  localStorage.removeItem('youc_oauth_state');
+
+  const resp = await fetch(TOKEN_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id:     CONFIG.CLIENT_ID,
+      code,
+      code_verifier: verifier,
+      grant_type:    'authorization_code',
+      redirect_uri:  REDIRECT_URI,
+    })
   });
+  if (!resp.ok) throw new Error('exchange_failed');
+  const data = await resp.json();
+  storeTokens(data);
+
+  // Salva email per login_hint futuro
+  try {
+    const ui = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: 'Bearer ' + data.access_token }
+    });
+    if (ui.ok) {
+      const info = await ui.json();
+      if (info.email) localStorage.setItem('youc_login_hint', info.email);
+    }
+  } catch(e) { /* non bloccante */ }
 }
 
 function showOverlay(msg) {
@@ -656,7 +677,7 @@ function startAutoRefresh() {
 
   // Rinnovo preventivo del token ogni 45 minuti (scade a 60)
   setInterval(async () => {
-    try { await silentTokenRefresh(); } catch(e) { console.warn('Token refresh silenzioso fallito:', e); }
+    try { await refreshAccessToken(); } catch(e) { console.warn('Token refresh fallito:', e); }
   }, 45 * 60 * 1000);
 }
 
