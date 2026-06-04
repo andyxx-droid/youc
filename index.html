@@ -400,53 +400,70 @@ async function ensureToken() {
 
 // ── Avvio autenticazione ──────────────────────────────────────
 async function startAuth() {
-  await new Promise(resolve => gapi.load('client', resolve));
-  await gapi.client.init({
-    apiKey: CONFIG.API_KEY,
-    discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest']
-  });
+  console.log('[Auth] startAuth iniziato');
+  try {
+    await new Promise(resolve => gapi.load('client', resolve));
+    console.log('[Auth] gapi.client caricato');
+    await gapi.client.init({
+      apiKey: CONFIG.API_KEY,
+      discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest']
+    });
+    console.log('[Auth] gapi.client inizializzato');
 
-  // 1. Ritorno dal redirect OAuth → scambia il codice con i token
-  const params = new URLSearchParams(window.location.search);
-  const code   = params.get('code');
-  const state  = params.get('state');
-  if (code && state === localStorage.getItem('youc_oauth_state')) {
-    history.replaceState({}, '', window.location.pathname); // pulisce URL
-    await exchangeCode(code);
-    hideOverlay();
-    await loadAllData();
-    startAutoRefresh();
-    return;
-  }
-
-  // 2. Token access ancora valido
-  const saved    = localStorage.getItem('youc_token');
-  const savedExp = parseInt(localStorage.getItem('youc_token_exp') || '0', 10);
-  if (saved && Date.now() < savedExp) {
-    tokenExpiresAt = savedExp;
-    gapi.client.setToken({ access_token: saved });
-    hideOverlay();
-    await loadAllData();
-    startAutoRefresh();
-    return;
-  }
-
-  // 3. Refresh token disponibile → rinnova silenziosamente
-  if (localStorage.getItem('youc_refresh_token')) {
-    try {
-      await refreshAccessToken();
+    // 1. Ritorno dal redirect OAuth → scambia il codice con i token
+    const params = new URLSearchParams(window.location.search);
+    const code   = params.get('code');
+    const state  = params.get('state');
+    console.log('[Auth] code:', code ? 'presente' : 'assente', '| state match:', state === localStorage.getItem('youc_oauth_state'));
+    if (code && state === localStorage.getItem('youc_oauth_state')) {
+      console.log('[Auth] scambio codice...');
+      history.replaceState({}, '', window.location.pathname);
+      await exchangeCode(code);
+      console.log('[Auth] codice scambiato, carico dati');
       hideOverlay();
       await loadAllData();
       startAutoRefresh();
       return;
-    } catch(e) {
-      // Refresh fallito (token revocato): riparte da login
-      localStorage.removeItem('youc_refresh_token');
     }
-  }
 
-  // 4. Prima volta (o dopo revoca): redirect a Google — nessun popup
-  await redirectToGoogle();
+    // 2. Token access ancora valido
+    const saved    = localStorage.getItem('youc_token');
+    const savedExp = parseInt(localStorage.getItem('youc_token_exp') || '0', 10);
+    console.log('[Auth] token salvato:', !!saved, '| scade tra:', Math.round((savedExp - Date.now()) / 1000) + 's');
+    if (saved && Date.now() < savedExp) {
+      tokenExpiresAt = savedExp;
+      gapi.client.setToken({ access_token: saved });
+      console.log('[Auth] token valido, carico dati');
+      hideOverlay();
+      await loadAllData();
+      startAutoRefresh();
+      return;
+    }
+
+    // 3. Refresh token disponibile → rinnova silenziosamente
+    const hasRefresh = !!localStorage.getItem('youc_refresh_token');
+    console.log('[Auth] refresh token:', hasRefresh ? 'presente' : 'assente');
+    if (hasRefresh) {
+      try {
+        await refreshAccessToken();
+        console.log('[Auth] refresh riuscito, carico dati');
+        hideOverlay();
+        await loadAllData();
+        startAutoRefresh();
+        return;
+      } catch(e) {
+        console.warn('[Auth] refresh fallito:', e.message);
+        localStorage.removeItem('youc_refresh_token');
+      }
+    }
+
+    // 4. Prima volta (o dopo revoca): redirect a Google — nessun popup
+    console.log('[Auth] redirect a Google...');
+    await redirectToGoogle();
+  } catch(e) {
+    console.error('[Auth] ERRORE:', e);
+    showOverlay('Errore di autenticazione: ' + e.message);
+  }
 }
 
 // ── Redirect alla pagina di login Google ──────────────────────
