@@ -469,31 +469,38 @@ async function startAuth() {
 // ── Redirect alla pagina di login Google ──────────────────────
 async function redirectToGoogle() {
   const { verifier, challenge } = await generatePKCE();
-  const state = base64url(crypto.getRandomValues(new Uint8Array(16)));
+  const state       = base64url(crypto.getRandomValues(new Uint8Array(16)));
+  const redirectUri = window.location.origin + window.location.pathname;
   localStorage.setItem('youc_pkce_verifier', verifier);
   localStorage.setItem('youc_oauth_state',   state);
+  localStorage.setItem('youc_redirect_uri',  redirectUri); // salvato per exchangeCode
 
   const url = new URL(AUTH_ENDPOINT);
   url.searchParams.set('client_id',             CONFIG.CLIENT_ID);
-  url.searchParams.set('redirect_uri',          REDIRECT_URI);
+  url.searchParams.set('redirect_uri',          redirectUri);
   url.searchParams.set('response_type',         'code');
   url.searchParams.set('scope',                 CONFIG.SCOPES);
   url.searchParams.set('code_challenge',        challenge);
   url.searchParams.set('code_challenge_method', 'S256');
   url.searchParams.set('state',                 state);
   url.searchParams.set('access_type',           'offline');
-  url.searchParams.set('prompt',                'consent'); // necessario per ottenere refresh_token
+  url.searchParams.set('prompt',                'consent');
   const hint = localStorage.getItem('youc_login_hint');
   if (hint) url.searchParams.set('login_hint', hint);
 
-  window.location.href = url.toString(); // redirect nella stessa scheda
+  console.log('[Auth] redirect_uri:', redirectUri);
+  window.location.href = url.toString();
 }
 
 // ── Scambio codice → token ────────────────────────────────────
 async function exchangeCode(code) {
-  const verifier = localStorage.getItem('youc_pkce_verifier');
+  const verifier    = localStorage.getItem('youc_pkce_verifier');
+  const redirectUri = localStorage.getItem('youc_redirect_uri'); // esatto, come usato nel redirect
   localStorage.removeItem('youc_pkce_verifier');
   localStorage.removeItem('youc_oauth_state');
+  localStorage.removeItem('youc_redirect_uri');
+
+  console.log('[Auth] exchangeCode redirect_uri:', redirectUri);
 
   const resp = await fetch(TOKEN_ENDPOINT, {
     method: 'POST',
@@ -503,10 +510,14 @@ async function exchangeCode(code) {
       code,
       code_verifier: verifier,
       grant_type:    'authorization_code',
-      redirect_uri:  REDIRECT_URI,
+      redirect_uri:  redirectUri,
     })
   });
-  if (!resp.ok) throw new Error('exchange_failed');
+  if (!resp.ok) {
+    const errBody = await resp.text();
+    console.error('[Auth] exchange error body:', errBody);
+    throw new Error('exchange_failed: ' + errBody);
+  }
   const data = await resp.json();
   storeTokens(data);
 
