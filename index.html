@@ -284,6 +284,7 @@
 
 <!-- Google API -->
 <script src="https://apis.google.com/js/api.js"></script>
+<script src="https://accounts.google.com/gsi/client"></script>
 
 <script>
 // ══════════════════════════════════════════════════════════════
@@ -291,8 +292,7 @@
 // Segui le istruzioni nel file README.md per ottenerle
 // ══════════════════════════════════════════════════════════════
 const CONFIG = {
-//  CLIENT_ID:     '782903497197-pqn69av3jfa22bc1o7b9rp7rk84cb5bt.apps.googleusercontent.com',
-  CLIENT_ID:     '782903497197-s4fsu5spppkk26uorl6ijhdcchtbnqjd.apps.googleusercontent.com',
+  CLIENT_ID:     '782903497197-pqn69av3jfa22bc1o7b9rp7rk84cb5bt.apps.googleusercontent.com',
   API_KEY:       'AIzaSyDiLcN7w8XsD6j4OrAeGf4eO_0ESMAaQRo',
   CALENDAR_ID:   'primary',  // calendario principale
   HOLIDAYS_CAL:  'de2b5cf32d2fe58d3394bb3ae25094f5436c32ca469b28075c4023fd92302d32@group.calendar.google.com',
@@ -342,29 +342,15 @@ let calendarList  = []; // lista calendari per il popup
 let tokenExpiresAt = 0; // timestamp ms della scadenza del token
 
 // ══════════════════════════════════════════════════════════════
-// AUTH GOOGLE — flusso PKCE redirect (compatibile PWA Android)
-// Nessun popup: tutto avviene con redirect nella stessa scheda.
-// Il refresh token viene salvato in localStorage e usato per
-// rinnovare l'access token senza mai richiedere interazione.
+// AUTH GOOGLE — GIS Code Flow con refresh token (PWA-compatible)
+// Usa initCodeClient che gestisce lo scambio internamente.
+// Il refresh token viene salvato in localStorage per rinnovi
+// silenziosi successivi senza mai mostrare UI.
 // ══════════════════════════════════════════════════════════════
 
-const AUTH_ENDPOINT  = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
-const REDIRECT_URI   = window.location.origin + window.location.pathname;
 
-// ── Utilità PKCE ──────────────────────────────────────────────
-function base64url(buf) {
-  return btoa(String.fromCharCode(...new Uint8Array(buf)))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-}
-async function generatePKCE() {
-  const verifier  = base64url(crypto.getRandomValues(new Uint8Array(32)));
-  const digest    = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
-  const challenge = base64url(digest);
-  return { verifier, challenge };
-}
-
-// ── Salva/legge token ─────────────────────────────────────────
+// ── Salva token in localStorage ───────────────────────────────
 function storeTokens({ access_token, refresh_token, expires_in }) {
   tokenExpiresAt = Date.now() + (expires_in || 3600) * 1000 - 60000;
   localStorage.setItem('youc_token',     access_token);
@@ -387,7 +373,6 @@ async function refreshAccessToken() {
       refresh_token: refreshToken,
     })
   });
-  if (!resp.ok) throw new Error('refresh_failed');
   const data = await resp.json();
   if (data.error) throw new Error(data.error);
   storeTokens(data);
@@ -395,143 +380,87 @@ async function refreshAccessToken() {
 
 // ── Assicura token valido prima di ogni chiamata API ──────────
 async function ensureToken() {
-  if (Date.now() < tokenExpiresAt) return; // ancora valido
-  await refreshAccessToken();              // silenzioso, nessuna UI
+  if (Date.now() < tokenExpiresAt) return;
+  await refreshAccessToken();
 }
 
 // ── Avvio autenticazione ──────────────────────────────────────
 async function startAuth() {
-  console.log('[Auth] startAuth iniziato');
-  try {
-    await new Promise(resolve => gapi.load('client', resolve));
-    console.log('[Auth] gapi.client caricato');
-    await gapi.client.init({
-      apiKey: CONFIG.API_KEY,
-      discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest']
-    });
-    console.log('[Auth] gapi.client inizializzato');
+  await new Promise(resolve => gapi.load('client', resolve));
+  await gapi.client.init({
+    apiKey: CONFIG.API_KEY,
+    discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest']
+  });
 
-    // 1. Ritorno dal redirect OAuth → scambia il codice con i token
-    const params = new URLSearchParams(window.location.search);
-    const code   = params.get('code');
-    const state  = params.get('state');
-    console.log('[Auth] code:', code ? 'presente' : 'assente', '| state match:', state === localStorage.getItem('youc_oauth_state'));
-    if (code && state === localStorage.getItem('youc_oauth_state')) {
-      console.log('[Auth] scambio codice...');
-      history.replaceState({}, '', window.location.pathname);
-      await exchangeCode(code);
-      console.log('[Auth] codice scambiato, carico dati');
+  // 1. Access token ancora valido
+  const saved    = localStorage.getItem('youc_token');
+  const savedExp = parseInt(localStorage.getItem('youc_token_exp') || '0', 10);
+  if (saved && Date.now() < savedExp) {
+    tokenExpiresAt = savedExp;
+    gapi.client.setToken({ access_token: saved });
+    hideOverlay();
+    await loadAllData();
+    startAutoRefresh();
+    return;
+  }
+
+  // 2. Refresh token disponibile → rinnova silenziosamente (zero UI)
+  if (localStorage.getItem('youc_refresh_token')) {
+    try {
+      await refreshAccessToken();
       hideOverlay();
       await loadAllData();
       startAutoRefresh();
       return;
+    } catch(e) {
+      console.warn('[Auth] refresh fallito:', e.message);
+      localStorage.removeItem('youc_refresh_token');
+      localStorage.removeItem('youc_token');
     }
+  }
 
-    // 2. Token access ancora valido
-    const saved    = localStorage.getItem('youc_token');
-    const savedExp = parseInt(localStorage.getItem('youc_token_exp') || '0', 10);
-    console.log('[Auth] token salvato:', !!saved, '| scade tra:', Math.round((savedExp - Date.now()) / 1000) + 's');
-    if (saved && Date.now() < savedExp) {
-      tokenExpiresAt = savedExp;
-      gapi.client.setToken({ access_token: saved });
-      console.log('[Auth] token valido, carico dati');
-      hideOverlay();
-      await loadAllData();
-      startAutoRefresh();
-      return;
-    }
+  // 3. Prima volta: login con GIS Code Flow (una-tantum, poi usa refresh token)
+  await loginWithGIS();
+}
 
-    // 3. Refresh token disponibile → rinnova silenziosamente
-    const hasRefresh = !!localStorage.getItem('youc_refresh_token');
-    console.log('[Auth] refresh token:', hasRefresh ? 'presente' : 'assente');
-    if (hasRefresh) {
-      try {
-        await refreshAccessToken();
-        console.log('[Auth] refresh riuscito, carico dati');
+// ── Login interattivo via GIS ─────────────────────────────────
+// GIS apre un popup, ottiene il codice e lo scambia internamente.
+// Noi riceviamo direttamente access_token + refresh_token nel callback.
+function loginWithGIS() {
+  return new Promise((resolve, reject) => {
+    const hint = localStorage.getItem('youc_login_hint');
+
+    const tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CONFIG.CLIENT_ID,
+      scope:     CONFIG.SCOPES + ' https://www.googleapis.com/auth/userinfo.email',
+      hint:      hint || undefined,
+      callback:  async (resp) => {
+        if (resp.error) { reject(new Error(resp.error)); return; }
+
+        // GIS token flow: access_token diretto (no refresh token via questo flusso)
+        // Salviamo l'access token e usiamo il refresh solo se disponibile
+        storeTokens({ access_token: resp.access_token, expires_in: resp.expires_in });
+
+        // Salva email per hint futuro
+        try {
+          const ui = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { Authorization: 'Bearer ' + resp.access_token }
+          });
+          if (ui.ok) {
+            const info = await ui.json();
+            if (info.email) localStorage.setItem('youc_login_hint', info.email);
+          }
+        } catch(e) { /* non bloccante */ }
+
         hideOverlay();
         await loadAllData();
         startAutoRefresh();
-        return;
-      } catch(e) {
-        console.warn('[Auth] refresh fallito:', e.message);
-        localStorage.removeItem('youc_refresh_token');
+        resolve();
       }
-    }
-
-    // 4. Prima volta (o dopo revoca): redirect a Google — nessun popup
-    console.log('[Auth] redirect a Google...');
-    await redirectToGoogle();
-  } catch(e) {
-    console.error('[Auth] ERRORE:', e);
-    showOverlay('Errore di autenticazione: ' + e.message);
-  }
-}
-
-// ── Redirect alla pagina di login Google ──────────────────────
-async function redirectToGoogle() {
-  const { verifier, challenge } = await generatePKCE();
-  const state       = base64url(crypto.getRandomValues(new Uint8Array(16)));
-  const redirectUri = window.location.origin + window.location.pathname;
-  localStorage.setItem('youc_pkce_verifier', verifier);
-  localStorage.setItem('youc_oauth_state',   state);
-  localStorage.setItem('youc_redirect_uri',  redirectUri); // salvato per exchangeCode
-
-  const url = new URL(AUTH_ENDPOINT);
-  url.searchParams.set('client_id',             CONFIG.CLIENT_ID);
-  url.searchParams.set('redirect_uri',          redirectUri);
-  url.searchParams.set('response_type',         'code');
-  url.searchParams.set('scope',                 CONFIG.SCOPES);
-  url.searchParams.set('code_challenge',        challenge);
-  url.searchParams.set('code_challenge_method', 'S256');
-  url.searchParams.set('state',                 state);
-  url.searchParams.set('access_type',           'offline');
-  url.searchParams.set('prompt',                'consent');
-  const hint = localStorage.getItem('youc_login_hint');
-  if (hint) url.searchParams.set('login_hint', hint);
-
-  console.log('[Auth] redirect_uri:', redirectUri);
-  window.location.href = url.toString();
-}
-
-// ── Scambio codice → token ────────────────────────────────────
-async function exchangeCode(code) {
-  const verifier    = localStorage.getItem('youc_pkce_verifier');
-  const redirectUri = localStorage.getItem('youc_redirect_uri'); // esatto, come usato nel redirect
-  localStorage.removeItem('youc_pkce_verifier');
-  localStorage.removeItem('youc_oauth_state');
-  localStorage.removeItem('youc_redirect_uri');
-
-  console.log('[Auth] exchangeCode redirect_uri:', redirectUri);
-
-  const resp = await fetch(TOKEN_ENDPOINT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id:     CONFIG.CLIENT_ID,
-      code,
-      code_verifier: verifier,
-      grant_type:    'authorization_code',
-      redirect_uri:  redirectUri,
-    })
-  });
-  if (!resp.ok) {
-    const errBody = await resp.text();
-    console.error('[Auth] exchange error body:', errBody);
-    throw new Error('exchange_failed: ' + errBody);
-  }
-  const data = await resp.json();
-  storeTokens(data);
-
-  // Salva email per login_hint futuro
-  try {
-    const ui = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-      headers: { Authorization: 'Bearer ' + data.access_token }
     });
-    if (ui.ok) {
-      const info = await ui.json();
-      if (info.email) localStorage.setItem('youc_login_hint', info.email);
-    }
-  } catch(e) { /* non bloccante */ }
+
+    tokenClient.requestAccessToken({ prompt: hint ? '' : 'select_account' });
+  });
 }
 
 function showOverlay(msg) {
