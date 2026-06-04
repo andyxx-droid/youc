@@ -460,7 +460,7 @@ async function redirectToGoogle() {
   url.searchParams.set('client_id',             CONFIG.CLIENT_ID);
   url.searchParams.set('redirect_uri',          REDIRECT_URI);
   url.searchParams.set('response_type',         'code');
-  url.searchParams.set('scope',                 CONFIG.SCOPES + ' offline_access');
+  url.searchParams.set('scope',                 CONFIG.SCOPES);
   url.searchParams.set('code_challenge',        challenge);
   url.searchParams.set('code_challenge_method', 'S256');
   url.searchParams.set('state',                 state);
