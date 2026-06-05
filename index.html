@@ -960,8 +960,32 @@ document.addEventListener('keydown', async e=>{
   }
 });
 
-// Ridisegna al resize finestra
-window.addEventListener('resize', ()=>build());
+// Ridisegna al resize finestra; su mobile gestisce cambio orientamento (±3 mesi)
+(function(){
+  // true = landscape, false = portrait
+  function isLandscape(){ return window.innerWidth > window.innerHeight; }
+
+  let prevLandscape = isLandscape();
+
+  window.addEventListener('resize', ()=>{
+    if(isMobile){
+      const nowLandscape = isLandscape();
+      if(nowLandscape !== prevLandscape){
+        prevLandscape = nowLandscape;
+        if(nowLandscape){
+          // portrait → landscape: aggiungi 3 mesi (max 24)
+          windowSize = Math.min(24, windowSize + 3);
+        } else {
+          // landscape → portrait: togli 3 mesi (min 1)
+          windowSize = Math.max(1, windowSize - 3);
+        }
+        loadAllData();
+        return;
+      }
+    }
+    build();
+  });
+})();
 
 // ══════════════════════════════════════════════════════════════
 // NAVIGAZIONE TOUCH (Android)
