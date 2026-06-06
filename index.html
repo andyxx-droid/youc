@@ -1091,6 +1091,29 @@ function showToast(msg){
 // Avvio automatico autenticazione
 window.addEventListener('load', () => startAuth());
 
+// ══════════════════════════════════════════════════════════════
+// WAKE LOCK — schermo always-on su mobile
+// ══════════════════════════════════════════════════════════════
+if(isMobile && 'wakeLock' in navigator){
+  let wakeLock = null;
+
+  async function requestWakeLock(){
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+    } catch(e){
+      console.warn('[WakeLock] non disponibile:', e);
+    }
+  }
+
+  // Riacquisisce il lock quando la pagina torna visibile
+  // (il lock viene rilasciato automaticamente dal browser quando la pagina va in background)
+  document.addEventListener('visibilitychange', ()=>{
+    if(document.visibilityState === 'visible') requestWakeLock();
+  });
+
+  requestWakeLock();
+}
+
 
 // ══════════════════════════════════════════════════════════════
 // POPUP EVENTO
