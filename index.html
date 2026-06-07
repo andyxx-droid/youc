@@ -235,66 +235,102 @@
     .time-display:hover{border-color:#1A1A18}
     .time-picker-wrap{position:relative}
 
-    /* ── TIME PICKER MODAL ── */
+    /* ── TIME PICKER MODAL (drum-roll) ── */
     #tp-modal{
       display:none;position:fixed;inset:0;z-index:900;
       background:rgba(0,0,0,.5);
-      align-items:center;justify-content:center;
+      align-items:flex-end;justify-content:center;
     }
     #tp-modal.open{display:flex}
     #tp-modal-box{
-      background:#fff;border-radius:16px;
-      padding:20px 20px 16px;
-      width:min(340px,90vw);
-      box-shadow:0 12px 48px rgba(0,0,0,.22);
-      display:flex;flex-direction:column;gap:16px;
+      background:#fff;border-radius:20px 20px 0 0;
+      padding:0 0 28px;
+      width:min(480px,100vw);
+      box-shadow:0 -4px 32px rgba(0,0,0,.18);
+      display:flex;flex-direction:column;
+    }
+    #tp-modal-header{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:16px 20px 12px;
+      border-bottom:0.5px solid #eee;
     }
     #tp-modal-title{
       font-size:12px;font-weight:600;color:#888;
       text-transform:uppercase;letter-spacing:.8px;margin:0;
     }
-    .tp-modal-display{
+    .tp-header-btn{
+      border:none;background:none;font-size:14px;font-family:inherit;
+      cursor:pointer;padding:4px 8px;border-radius:6px;font-weight:600;
+      transition:background .12s;
+    }
+    .tp-header-btn.cancel{color:#888}
+    .tp-header-btn.confirm{color:#1A1A18}
+    .tp-header-btn:hover{background:#f0f0ee}
+
+    /* drum picker body */
+    #tp-drums{
       display:flex;align-items:center;justify-content:center;
-      gap:4px;
-      font-size:48px;font-weight:300;color:#1A1A18;letter-spacing:-1px;
+      gap:0;padding:0 20px;position:relative;
+      height:210px;
+      overflow:hidden;
+    }
+    /* selection highlight band */
+    #tp-drums::before{
+      content:'';position:absolute;
+      left:20px;right:20px;
+      top:50%;transform:translateY(-50%);
+      height:52px;margin-top:-2px;
+      background:rgba(26,26,24,.07);
+      border-radius:10px;
+      pointer-events:none;
+      z-index:1;
+    }
+    /* fade top/bottom */
+    #tp-drums::after{
+      content:'';position:absolute;inset:0;
+      background:linear-gradient(
+        to bottom,
+        #fff 0%,#fff 5%,
+        transparent 28%,
+        transparent 72%,
+        #fff 95%,#fff 100%
+      );
+      pointer-events:none;z-index:2;
+    }
+    .tp-drum{
+      flex:1;height:100%;
+      overflow-y:scroll;
+      scroll-snap-type:y mandatory;
+      -webkit-overflow-scrolling:touch;
+      scrollbar-width:none;
+      -ms-overflow-style:none;
+    }
+    .tp-drum::-webkit-scrollbar{display:none}
+    .tp-drum-label{
+      text-align:center;font-size:11px;font-weight:600;
+      color:#aaa;letter-spacing:.8px;text-transform:uppercase;
+      padding:4px 0 8px;
+    }
+    .tp-drum-item{
+      height:52px;
+      display:flex;align-items:center;justify-content:center;
+      font-size:28px;font-weight:300;color:#1A1A18;
       font-variant-numeric:tabular-nums;
+      scroll-snap-align:center;
+      cursor:pointer;
+      user-select:none;
     }
-    .tp-modal-display span.active{color:#E53935}
-    .tp-modal-sep{font-size:40px;font-weight:200;color:#ccc;padding-bottom:4px}
+    .tp-drum-sep{
+      font-size:32px;font-weight:200;color:#ccc;
+      padding:0 4px;flex-shrink:0;padding-top:52px; /* align with items */
+    }
+    /* spacer sopra/sotto per centrare primo/ultimo item */
+    .tp-drum-spacer{height:79px;flex-shrink:0}
 
-    .tp-section-tabs{display:flex;gap:0;border-bottom:1px solid #eee;margin-bottom:4px}
-    .tp-tab{
-      flex:1;padding:6px;font-size:11px;font-weight:600;letter-spacing:.5px;
-      text-transform:uppercase;text-align:center;cursor:pointer;color:#aaa;
-      border-bottom:2px solid transparent;transition:color .15s,border-color .15s;
+    .tp-modal-labels{
+      display:flex;gap:0;padding:0 20px;margin-top:-4px;
     }
-    .tp-tab.active{color:#1A1A18;border-bottom-color:#1A1A18}
-
-    .tp-grid-wrap{overflow:hidden}
-    .tp-grid{
-      display:grid;gap:4px;
-    }
-    .tp-grid.hours{grid-template-columns:repeat(6,1fr)}
-    .tp-grid.minutes{grid-template-columns:repeat(6,1fr)}
-    .tp-cell{
-      border:none;border-radius:8px;padding:10px 4px;
-      font-size:15px;font-weight:500;font-family:inherit;
-      color:#1A1A18;background:#f5f5f3;cursor:pointer;
-      transition:background .12s,color .12s,transform .08s;
-      text-align:center;
-    }
-    .tp-cell:hover{background:#e8e8e4;transform:scale(1.05)}
-    .tp-cell.selected{background:#1A1A18;color:#fff}
-
-    .tp-modal-actions{display:flex;gap:8px;margin-top:4px}
-    .tp-modal-btn{
-      flex:1;border:none;border-radius:8px;padding:11px;
-      font-size:13px;font-family:inherit;cursor:pointer;font-weight:500;
-      transition:opacity .15s;
-    }
-    .tp-modal-btn:hover{opacity:.82}
-    .tp-modal-btn.confirm{background:#1A1A18;color:#fff}
-    .tp-modal-btn.cancel{background:#f5f5f3;color:#1A1A18;border:0.5px solid #ccc}
+    .tp-modal-label{flex:1;text-align:center;font-size:11px;font-weight:600;color:#aaa;letter-spacing:.6px;text-transform:uppercase}
 
     /* ── TOAST notifica aggiornamento ── */
     #toast{
@@ -474,27 +510,23 @@
 </div>
 
 <!-- Time Picker Modal -->
+<!-- Time Picker Modal (drum-roll) -->
 <div id="tp-modal">
   <div id="tp-modal-box">
-    <p id="tp-modal-title">Seleziona ora</p>
-    <div class="tp-modal-display">
-      <span id="tp-disp-h">09</span>
-      <span class="tp-modal-sep">:</span>
-      <span id="tp-disp-m">00</span>
+    <div id="tp-modal-header">
+      <button class="tp-header-btn cancel" onclick="closeTimePicker(false)">Annulla</button>
+      <p id="tp-modal-title">Seleziona ora</p>
+      <button class="tp-header-btn confirm" onclick="closeTimePicker(true)">OK</button>
     </div>
-    <div class="tp-section-tabs">
-      <div class="tp-tab active" id="tp-tab-h" onclick="tpSwitchTab('h')">Ore</div>
-      <div class="tp-tab" id="tp-tab-m" onclick="tpSwitchTab('m')">Minuti</div>
+    <div class="tp-modal-labels">
+      <span class="tp-modal-label">Ore</span>
+      <span style="width:24px;flex-shrink:0"></span>
+      <span class="tp-modal-label">Minuti</span>
     </div>
-    <div class="tp-grid-wrap">
-      <!-- grid ore -->
-      <div class="tp-grid hours" id="tp-grid-h"></div>
-      <!-- grid minuti -->
-      <div class="tp-grid minutes" id="tp-grid-m" style="display:none"></div>
-    </div>
-    <div class="tp-modal-actions">
-      <button class="tp-modal-btn cancel" onclick="closeTimePicker(false)">Annulla</button>
-      <button class="tp-modal-btn confirm" onclick="closeTimePicker(true)">OK</button>
+    <div id="tp-drums">
+      <div class="tp-drum" id="tp-drum-h"></div>
+      <div class="tp-drum-sep">:</div>
+      <div class="tp-drum" id="tp-drum-m"></div>
     </div>
   </div>
 </div>
@@ -532,7 +564,7 @@
 // ══════════════════════════════════════════════════════════════
 // VERSIONE
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v9.260607-1608';
+const APP_VERSION = 'v9.260607-1614';
 document.addEventListener('DOMContentLoaded', ()=>{
   const el = document.getElementById('overlay-version');
   if(el) el.textContent = APP_VERSION;
@@ -1457,9 +1489,12 @@ function buildCalSelect(selectedCal){
   updateColorVis();
 }
 
-// ── Time picker: display + modal ─────────────────────────────
-let _tpPrefix = null; // 'start' | 'end'
+// ── Time picker: display + drum-roll modal ───────────────────
+let _tpPrefix = null;
 let _tpH = 9, _tpM = 0;
+let _tpScrollTimer = null;
+
+const ITEM_H = 52; // px altezza ogni item drum
 
 function buildTimeSelects(prefix, defaultValue){
   const [dh, dm] = (defaultValue || '00:00').split(':').map(Number);
@@ -1503,6 +1538,39 @@ function updateTimeDisplay(prefix){
   if(disp) disp.textContent = `${h}:${m}`;
 }
 
+// ── Drum builder ─────────────────────────────────────────────
+function _buildDrum(drumEl, items, selectedIdx){
+  drumEl.innerHTML = '';
+  // spacer top
+  const st = document.createElement('div');
+  st.className = 'tp-drum-spacer';
+  drumEl.appendChild(st);
+
+  items.forEach((label, i)=>{
+    const div = document.createElement('div');
+    div.className = 'tp-drum-item';
+    div.textContent = label;
+    div.dataset.idx = i;
+    drumEl.appendChild(div);
+  });
+
+  // spacer bottom
+  const sb = document.createElement('div');
+  sb.className = 'tp-drum-spacer';
+  drumEl.appendChild(sb);
+
+  // scroll to selected (instant)
+  requestAnimationFrame(()=>{
+    drumEl.scrollTop = selectedIdx * ITEM_H;
+  });
+}
+
+function _drumGetCurrent(drumEl, itemCount){
+  const raw = drumEl.scrollTop;
+  let idx = Math.round(raw / ITEM_H);
+  return Math.max(0, Math.min(itemCount - 1, idx));
+}
+
 function openTimePicker(prefix){
   _tpPrefix = prefix;
   const hSel = document.getElementById('ev-'+prefix+'-h');
@@ -1510,83 +1578,43 @@ function openTimePicker(prefix){
   _tpH = parseInt(hSel?.value || '9', 10);
   _tpM = parseInt(mSel?.value || '0', 10);
 
-  // Titolo
   document.getElementById('tp-modal-title').textContent =
     prefix === 'start' ? 'Ora di inizio' : 'Ora di fine';
 
-  // Aggiorna display
-  _tpUpdateDisplay();
+  // Build hours drum (0-23)
+  const hLabels = Array.from({length:24}, (_,i)=> String(i).padStart(2,'0'));
+  _buildDrum(document.getElementById('tp-drum-h'), hLabels, _tpH);
 
-  // Costruisci griglia ore
-  const gridH = document.getElementById('tp-grid-h');
-  gridH.innerHTML = '';
-  for(let h=0; h<24; h++){
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'tp-cell' + (h===_tpH ? ' selected' : '');
-    btn.textContent = String(h).padStart(2,'0');
-    btn.dataset.val = h;
-    btn.onclick = ()=>{ _tpH = h; _tpUpdateDisplay(); _tpRefreshGrid('h'); tpSwitchTab('m'); };
-    gridH.appendChild(btn);
-  }
+  // Build minutes drum (0,5,10,...,55)
+  const mVals = Array.from({length:12}, (_,i)=> i*5);
+  const mLabels = mVals.map(v=> String(v).padStart(2,'0'));
+  const mIdx = mVals.indexOf(Math.round(_tpM/5)*5 % 60);
+  _buildDrum(document.getElementById('tp-drum-m'), mLabels, Math.max(0,mIdx));
 
-  // Costruisci griglia minuti
-  const gridM = document.getElementById('tp-grid-m');
-  gridM.innerHTML = '';
-  for(let m=0; m<60; m+=5){
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'tp-cell' + (m===_tpM ? ' selected' : '');
-    btn.textContent = String(m).padStart(2,'0');
-    btn.dataset.val = m;
-    btn.onclick = ()=>{ _tpM = m; _tpUpdateDisplay(); _tpRefreshGrid('m'); };
-    gridM.appendChild(btn);
-  }
-
-  // Mostra tab ore per primo
-  tpSwitchTab('h');
-
-  // Apri modal
   document.getElementById('tp-modal').classList.add('open');
 }
 
-function tpSwitchTab(tab){
-  document.getElementById('tp-grid-h').style.display  = tab==='h' ? 'grid' : 'none';
-  document.getElementById('tp-grid-m').style.display  = tab==='m' ? 'grid' : 'none';
-  document.getElementById('tp-tab-h').classList.toggle('active', tab==='h');
-  document.getElementById('tp-tab-m').classList.toggle('active', tab==='m');
-  document.getElementById('tp-disp-h').classList.toggle('active', tab==='h');
-  document.getElementById('tp-disp-m').classList.toggle('active', tab==='m');
-}
+function closeTimePicker(doSave){
+  const drumH = document.getElementById('tp-drum-h');
+  const drumM = document.getElementById('tp-drum-m');
 
-function _tpUpdateDisplay(){
-  document.getElementById('tp-disp-h').textContent = String(_tpH).padStart(2,'0');
-  document.getElementById('tp-disp-m').textContent = String(_tpM).padStart(2,'0');
-}
-
-function _tpRefreshGrid(type){
-  const grid = document.getElementById('tp-grid-'+type);
-  grid.querySelectorAll('.tp-cell').forEach(btn=>{
-    const v = parseInt(btn.dataset.val, 10);
-    btn.classList.toggle('selected', type==='h' ? v===_tpH : v===_tpM);
-  });
-}
-
-function closeTimePicker(confirm){
-  document.getElementById('tp-modal').classList.remove('open');
-  if(confirm && _tpPrefix){
-    const h = String(_tpH).padStart(2,'0');
-    const m = String(_tpM).padStart(2,'0');
+  if(doSave && _tpPrefix){
+    const hIdx = _drumGetCurrent(drumH, 24);
+    const mIdx = _drumGetCurrent(drumM, 12);
+    const h = String(hIdx).padStart(2,'0');
+    const m = String(mIdx * 5).padStart(2,'0');
     const hSel = document.getElementById('ev-'+_tpPrefix+'-h');
     const mSel = document.getElementById('ev-'+_tpPrefix+'-m');
     if(hSel) hSel.value = h;
     if(mSel) mSel.value = m;
     updateTimeDisplay(_tpPrefix);
   }
+
+  document.getElementById('tp-modal').classList.remove('open');
   _tpPrefix = null;
 }
 
-// Chiudi modal cliccando lo sfondo
+// Chiudi toccando lo sfondo
 document.addEventListener('DOMContentLoaded', ()=>{
   document.getElementById('tp-modal').addEventListener('click', e=>{
     if(e.target === document.getElementById('tp-modal')) closeTimePicker(false);
