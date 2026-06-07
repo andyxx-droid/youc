@@ -271,7 +271,7 @@
     <div id="ev-form">
     <h2 id="ev-title-label">Nuovo evento</h2>
     <div id="ev-color-wrap">
-      <label>Titolo</label>
+      <label id="ev-cat-label" style="color:#1A1A18">Titolo</label>
       <div class="ev-title-row">
         <!-- Quadrato categoria cliccabile -->
         <div id="ev-cat-swatch" title="Cambia categoria"></div>
@@ -1189,9 +1189,13 @@ function buildColorSelect(){
 
 function updateSwatchBg(){
   const swatch = document.getElementById('ev-cat-swatch');
+  const lbl    = document.getElementById('ev-cat-label');
   if(!swatch) return;
   const cat = CATEGORIES.find(c=>c.id===selectedColorId);
-  if(cat) swatch.style.background = cat.bg;
+  if(cat){
+    swatch.style.background = cat.bg;
+    if(lbl) lbl.textContent = cat.label;
+  }
 }
 
 // Alias per compatibilità con codice esistente che chiama updateSelectBg
