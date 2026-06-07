@@ -396,6 +396,7 @@
       display:flex;align-items:center;justify-content:center;
       flex-shrink:0;font-size:17px;
     }
+    .menu-btn-icon.reset{background:#f5f5f3;color:#1A1A18;border:1px solid #ddd}
     .menu-btn-icon.refresh{background:#1A1A18;color:#fff}
     .menu-btn-icon.setup{background:#f5f5f3;color:#1A1A18;border:1px solid #ddd}
     .menu-btn-label{flex:1;font-weight:500}
@@ -539,6 +540,13 @@
     <div class="menu-app-sub">Year Oriented Universal Calendar</div>
     <div class="menu-meta" id="menu-version-line"><!-- popolato da JS --></div>
     <div class="menu-divider"></div>
+    <button class="menu-btn" onclick="menuResetView()">
+      <div class="menu-btn-icon reset">⌂</div>
+      <div>
+        <div class="menu-btn-label">Vista iniziale</div>
+        <div class="menu-btn-desc">Torna alla visualizzazione di partenza</div>
+      </div>
+    </button>
     <button class="menu-btn" onclick="menuRefresh()">
       <div class="menu-btn-icon refresh">↺</div>
       <div>
@@ -564,7 +572,7 @@
 // ══════════════════════════════════════════════════════════════
 // VERSIONE
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v9.260607-1631';
+const APP_VERSION = 'v9.260607-1700';
 document.addEventListener('DOMContentLoaded', ()=>{
   const el = document.getElementById('overlay-version');
   if(el) el.textContent = APP_VERSION;
@@ -1267,7 +1275,6 @@ document.addEventListener('keydown', async e=>{
 
 // ══════════════════════════════════════════════════════════════
 // NAVIGAZIONE TOUCH (Android)
-// triplo tap                              → visualizzazione iniziale
 // swipe dx su intestazione mesi          → ctrl+← (indietro finestra)
 // swipe sx su intestazione mesi          → ctrl+→ (avanti finestra)
 // swipe dx fuori intestazione            → ctrl+↑ (meno mesi)
@@ -1275,15 +1282,10 @@ document.addEventListener('keydown', async e=>{
 // ══════════════════════════════════════════════════════════════
 (function(){
   const MIN_SWIPE  = 50;   // px minimi per riconoscere uno swipe
-  const TAP_DELAY  = 300;  // ms massimi tra tap consecutivi
 
   let touchStartX  = 0;
   let touchStartY  = 0;
   let swipeOnHeader = false; // lo swipe è partito sulla riga intestazione mesi?
-  let tapCount     = 0;
-  let tapTimer     = null;
-  let lastTapTime  = 0;
-  let lastTapX     = 0;
 
   // Restituisce true se il punto (x,y) è sulla riga di intestazione dei mesi
   function isOnHeader(x, y){
@@ -1304,29 +1306,7 @@ document.addEventListener('keydown', async e=>{
     touchStartX = t.clientX;
     touchStartY = t.clientY;
     swipeOnHeader = isOnHeader(t.clientX, t.clientY);
-
-    // Triplo tap
-    const now = Date.now();
-    if(now - lastTapTime < TAP_DELAY && Math.abs(t.clientX - lastTapX) < 60){
-      tapCount++;
-    } else {
-      tapCount = 1;
-    }
-    lastTapTime = now;
-    lastTapX    = t.clientX;
-
-    if(tapTimer) clearTimeout(tapTimer);
-    tapTimer = setTimeout(()=>{ tapCount=0; }, TAP_DELAY*2);
-
-    if(tapCount >= 3){
-      tapCount = 0;
-      if(tapTimer){ clearTimeout(tapTimer); tapTimer=null; }
-      windowStart = DEFAULT_START;
-      windowSize  = DEFAULT_SIZE;
-      loadAllData();
-      e.preventDefault();
-    }
-  }, {passive: false});
+  }, {passive: true});
 
   document.addEventListener('touchend', async e=>{
     if(e.touches.length !== 0) return;
@@ -1853,6 +1833,14 @@ function menuRefresh(){
   closeMenu();
   // Hard reload dal server (bypassa cache)
   window.location.reload(true);
+}
+
+function menuResetView(){
+  closeMenu();
+  windowStart = DEFAULT_START;
+  windowSize  = DEFAULT_SIZE;
+  loadAllData();
+  showToast('Vista iniziale ripristinata');
 }
 
 function menuSetup(){
