@@ -224,6 +224,38 @@
       border:1px solid rgba(0,0,0,.1);
     }
 
+    /* ── TIME PICKER ── */
+    .time-display{
+      width:100%;border:0.5px solid #ccc;border-radius:6px;
+      padding:7px 10px;font-size:13px;font-family:inherit;
+      color:#1A1A18;background:#fff;box-sizing:border-box;
+      cursor:pointer;text-align:left;
+      transition:border-color .15s;
+    }
+    .time-display:hover{border-color:#1A1A18}
+    .time-picker-wrap{position:relative}
+    .time-picker-pop{
+      display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:700;
+      background:#fff;border:1px solid #1A1A18;border-radius:10px;
+      box-shadow:0 6px 24px rgba(0,0,0,.15);
+      padding:12px;min-width:160px;
+    }
+    .time-picker-pop.open{display:block}
+    .time-picker-selects{display:flex;align-items:center;gap:6px}
+    .time-picker-selects select{
+      flex:1;border:0.5px solid #ccc;border-radius:6px;
+      padding:6px 4px;font-size:20px;font-family:inherit;
+      font-weight:600;color:#1A1A18;background:#fff;
+      text-align:center;outline:none;cursor:pointer;
+    }
+    .time-picker-selects select:focus{border-color:#1A1A18}
+    .time-picker-sep{font-size:20px;font-weight:600;color:#1A1A18}
+    .time-picker-done{
+      margin-top:10px;width:100%;border:none;border-radius:6px;
+      background:#1A1A18;color:#fff;padding:7px;
+      font-size:12px;font-family:inherit;cursor:pointer;font-weight:500;
+    }
+
     /* ── TOAST notifica aggiornamento ── */
     #toast{
       position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
@@ -367,9 +399,16 @@
       </div>
       <div id="ev-start-time-wrap" style="display:none">
         <label>Ora inizio</label>
-        <div style="display:flex;gap:4px">
-          <select id="ev-start-h" style="flex:1"></select>
-          <select id="ev-start-m" style="flex:1"></select>
+        <div class="time-picker-wrap" id="tp-start">
+          <button type="button" class="time-display" id="ev-start-display" onclick="toggleTimePicker('start')">09:00</button>
+          <div class="time-picker-pop" id="tp-start-pop">
+            <div class="time-picker-selects">
+              <select id="ev-start-h" onchange="updateTimeDisplay('start')"></select>
+              <span class="time-picker-sep">:</span>
+              <select id="ev-start-m" onchange="updateTimeDisplay('start')"></select>
+            </div>
+            <button type="button" class="time-picker-done" onclick="toggleTimePicker('start')">OK</button>
+          </div>
         </div>
       </div>
     </div>
@@ -380,9 +419,16 @@
       </div>
       <div id="ev-end-time-wrap" style="display:none">
         <label>Ora fine</label>
-        <div style="display:flex;gap:4px">
-          <select id="ev-end-h" style="flex:1"></select>
-          <select id="ev-end-m" style="flex:1"></select>
+        <div class="time-picker-wrap" id="tp-end">
+          <button type="button" class="time-display" id="ev-end-display" onclick="toggleTimePicker('end')">10:00</button>
+          <div class="time-picker-pop" id="tp-end-pop">
+            <div class="time-picker-selects">
+              <select id="ev-end-h" onchange="updateTimeDisplay('end')"></select>
+              <span class="time-picker-sep">:</span>
+              <select id="ev-end-m" onchange="updateTimeDisplay('end')"></select>
+            </div>
+            <button type="button" class="time-picker-done" onclick="toggleTimePicker('end')">OK</button>
+          </div>
         </div>
       </div>
     </div>
@@ -432,7 +478,7 @@
 // ══════════════════════════════════════════════════════════════
 // VERSIONE
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v9.260607-1047';
+const APP_VERSION = 'v9.260607-1059';
 document.addEventListener('DOMContentLoaded', ()=>{
   const el = document.getElementById('overlay-version');
   if(el) el.textContent = APP_VERSION;
@@ -1357,11 +1403,11 @@ function buildCalSelect(selectedCal){
   updateColorVis();
 }
 
-// ── Popola <select> ore e minuti separati ────────────────────
+// ── Time picker: display + popover ───────────────────────────
 function buildTimeSelects(prefix, defaultValue){
   const [dh, dm] = (defaultValue || '00:00').split(':').map(Number);
-  const hSel = document.getElementById(prefix+'-h');
-  const mSel = document.getElementById(prefix+'-m');
+  const hSel = document.getElementById('ev-'+prefix+'-h');
+  const mSel = document.getElementById('ev-'+prefix+'-m');
   if(!hSel || !mSel) return;
   hSel.innerHTML = '';
   for(let h=0; h<24; h++){
@@ -1379,27 +1425,55 @@ function buildTimeSelects(prefix, defaultValue){
     if(m === Math.round(dm/5)*5 % 60) opt.selected = true;
     mSel.appendChild(opt);
   }
+  updateTimeDisplay(prefix);
 }
 
 function setTimeSelects(prefix, value){
   if(!value) return;
   const [h, m] = value.split(':').map(Number);
   const rounded = Math.round(m/5)*5 % 60;
-  const hSel = document.getElementById(prefix+'-h');
-  const mSel = document.getElementById(prefix+'-m');
+  const hSel = document.getElementById('ev-'+prefix+'-h');
+  const mSel = document.getElementById('ev-'+prefix+'-m');
   if(hSel) hSel.value = String(h).padStart(2,'0');
   if(mSel) mSel.value = String(rounded).padStart(2,'0');
+  updateTimeDisplay(prefix);
 }
 
+function updateTimeDisplay(prefix){
+  const h = document.getElementById('ev-'+prefix+'-h')?.value || '00';
+  const m = document.getElementById('ev-'+prefix+'-m')?.value || '00';
+  const disp = document.getElementById('ev-'+prefix+'-display');
+  if(disp) disp.textContent = `${h}:${m}`;
+}
+
+function toggleTimePicker(prefix){
+  const pop = document.getElementById('tp-'+prefix+'-pop');
+  if(!pop) return;
+  // Chiudi l'altro se aperto
+  const other = prefix === 'start' ? 'end' : 'start';
+  document.getElementById('tp-'+other+'-pop')?.classList.remove('open');
+  pop.classList.toggle('open');
+}
+
+// Chiudi picker cliccando fuori
+document.addEventListener('click', e=>{
+  ['start','end'].forEach(p=>{
+    const wrap = document.getElementById('tp-'+p);
+    if(wrap && !wrap.contains(e.target)){
+      document.getElementById('tp-'+p+'-pop')?.classList.remove('open');
+    }
+  });
+});
+
 function getTimeValue(prefix){
-  const h = document.getElementById(prefix+'-h')?.value || '00';
-  const m = document.getElementById(prefix+'-m')?.value || '00';
+  const h = document.getElementById('ev-'+prefix+'-h')?.value || '00';
+  const m = document.getElementById('ev-'+prefix+'-m')?.value || '00';
   return `${h}:${m}`;
 }
 
 document.addEventListener('DOMContentLoaded', ()=>{
-  buildTimeSelects('ev-start', '09:00');
-  buildTimeSelects('ev-end',   '10:00');
+  buildTimeSelects('start', '09:00');
+  buildTimeSelects('end',   '10:00');
 });
 
 function toggleAllDay(){
@@ -1429,8 +1503,8 @@ function openPopup(dk, evId){
       const allday = !ev.time;
       document.getElementById('ev-allday').checked = allday;
       if(!allday){
-        setTimeSelects('ev-start', ev.time || '09:00');
-        setTimeSelects('ev-end',   ev.timeEnd || '10:00');
+        setTimeSelects('start', ev.time || '09:00');
+        setTimeSelects('end',   ev.timeEnd || '10:00');
       }
       // Imposta colore PRIMA di buildColorSelect
       if(ev.colorId) selectedColorId = String(ev.colorId);
@@ -1448,8 +1522,8 @@ function openPopup(dk, evId){
     document.getElementById('ev-start-date').value = dk;
     document.getElementById('ev-end-date').value   = dk;
     document.getElementById('ev-allday').checked   = true;
-    setTimeSelects('ev-start', '09:00');
-    setTimeSelects('ev-end',   '10:00');
+    setTimeSelects('start', '09:00');
+    setTimeSelects('end',   '10:00');
     buildColorSelect();
     buildCalSelect(CONFIG.CALENDAR_ID);
     toggleAllDay();
@@ -1481,8 +1555,8 @@ async function saveEvent(){
   const allday   = document.getElementById('ev-allday').checked;
   const startDate= document.getElementById('ev-start-date').value;
   const endDate  = document.getElementById('ev-end-date').value;
-  const startTime= getTimeValue('ev-start');
-  const endTime  = getTimeValue('ev-end');
+  const startTime= getTimeValue('start');
+  const endTime  = getTimeValue('end');
   const desc     = document.getElementById('ev-desc').value.trim();
   const calId    = document.getElementById('ev-cal').value;
   // selectedColorId is updated directly by the category swatch dropdown
