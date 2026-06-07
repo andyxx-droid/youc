@@ -239,7 +239,10 @@
 <!-- Overlay di caricamento -->
 <div id="overlay">
   <h1>YouC</h1>
+  <p style="font-size:11px;color:#aaa;letter-spacing:2px;text-transform:uppercase;margin-top:-14px">Year Oriented Universal Calendar</p>
   <p id="overlay-msg">Caricamento...</p>
+  <p id="overlay-version" style="font-size:10px;color:#bbb;letter-spacing:.5px;margin-top:-10px"></p>
+  <p style="font-size:11px;color:#bbb;letter-spacing:.5px">Andrea Xotta</p>
 </div>
 
 <!-- Contenitore One Tap (Google lo popola automaticamente) -->
@@ -328,6 +331,15 @@
 <script src="https://accounts.google.com/gsi/client"></script>
 
 <script>
+// ══════════════════════════════════════════════════════════════
+// VERSIONE
+// ══════════════════════════════════════════════════════════════
+const APP_VERSION = 'v7.20260607-000000';
+document.addEventListener('DOMContentLoaded', ()=>{
+  const el = document.getElementById('overlay-version');
+  if(el) el.textContent = APP_VERSION;
+});
+
 // ══════════════════════════════════════════════════════════════
 // CONFIGURAZIONE — da compilare con le tue credenziali Google
 // Segui le istruzioni nel file README.md per ottenerle
