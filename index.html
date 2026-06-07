@@ -572,7 +572,7 @@
 // ══════════════════════════════════════════════════════════════
 // VERSIONE
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v10.260607-16:56';
+const APP_VERSION = 'v10.260607-1705';
 document.addEventListener('DOMContentLoaded', ()=>{
   const el = document.getElementById('overlay-version');
   if(el) el.textContent = APP_VERSION;
@@ -622,9 +622,15 @@ const WD  = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
 const td = new Date();
 let windowStart = td.getFullYear()*12 + td.getMonth();
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-const DEFAULT_SIZE  = isMobile ? 4 : 12;
 const DEFAULT_START = td.getFullYear()*12 + td.getMonth();
-let windowSize = DEFAULT_SIZE;
+
+// DEFAULT_SIZE dipende dal dispositivo e, su mobile, dall'orientamento iniziale
+function getDefaultSize(){
+  if(!isMobile) return 12;
+  return window.innerWidth > window.innerHeight ? 7 : 4;
+}
+
+let windowSize = getDefaultSize();
 let EVENTS   = [];
 let HOLIDAYS = {};
 let NOSCUOLA = new Set(); // Set di date YYYY-MM-DD
@@ -1838,7 +1844,7 @@ function menuRefresh(){
 function menuResetView(){
   closeMenu();
   windowStart = DEFAULT_START;
-  windowSize  = DEFAULT_SIZE;
+  windowSize  = getDefaultSize();
   loadAllData();
   showToast('Vista iniziale ripristinata');
 }
