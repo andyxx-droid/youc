@@ -232,6 +232,73 @@
       opacity:0;transition:opacity .3s;pointer-events:none;z-index:200;
     }
     #toast.show{opacity:1}
+
+    /* ── MENU OVERLAY ── */
+    #menu-overlay{
+      position:fixed;inset:0;z-index:800;
+      background:rgba(0,0,0,0);
+      pointer-events:none;
+      transition:background .25s;
+    }
+    #menu-overlay.open{
+      background:rgba(0,0,0,.38);
+      pointer-events:all;
+    }
+    #menu-panel{
+      position:absolute;
+      top:0;left:0;right:0;
+      background:#F7F6F2;
+      border-radius:0 0 16px 16px;
+      box-shadow:0 8px 32px rgba(0,0,0,.18);
+      padding:28px 24px 24px;
+      display:flex;flex-direction:column;gap:6px;
+      transform:translateY(-110%);
+      transition:transform .28s cubic-bezier(.4,0,.2,1);
+      max-width:480px;
+      margin:0 auto;
+    }
+    #menu-overlay.open #menu-panel{
+      transform:translateY(0);
+    }
+    .menu-app-title{
+      font-size:26px;font-weight:300;letter-spacing:4px;color:#1A1A18;
+      margin-bottom:2px;
+    }
+    .menu-app-sub{
+      font-size:10px;color:#aaa;letter-spacing:2px;text-transform:uppercase;
+      margin-bottom:2px;
+    }
+    .menu-meta{
+      font-size:11px;color:#bbb;letter-spacing:.4px;margin-bottom:14px;
+    }
+    .menu-divider{
+      height:1px;background:#e8e8e4;margin:6px 0;
+    }
+    .menu-btn{
+      display:flex;align-items:center;gap:12px;
+      background:none;border:none;border-radius:10px;
+      padding:12px 14px;cursor:pointer;
+      font-size:14px;font-family:inherit;color:#1A1A18;
+      text-align:left;width:100%;
+      transition:background .13s;
+    }
+    .menu-btn:hover,.menu-btn:active{background:#eceae4}
+    .menu-btn-icon{
+      width:32px;height:32px;border-radius:8px;
+      display:flex;align-items:center;justify-content:center;
+      flex-shrink:0;font-size:17px;
+    }
+    .menu-btn-icon.refresh{background:#1A1A18;color:#fff}
+    .menu-btn-icon.setup{background:#f5f5f3;color:#1A1A18;border:1px solid #ddd}
+    .menu-btn-label{flex:1;font-weight:500}
+    .menu-btn-desc{font-size:11px;color:#aaa;font-weight:400;margin-top:1px}
+    .menu-close{
+      position:absolute;top:14px;right:16px;
+      background:none;border:none;font-size:20px;cursor:pointer;
+      color:#aaa;padding:4px 8px;border-radius:6px;
+      transition:background .12s,color .12s;
+    }
+    .menu-close:hover{background:#eceae4;color:#1A1A18}
   </style>
 </head>
 <body>
@@ -326,6 +393,31 @@
   </div>
 </div>
 
+<!-- Menu overlay -->
+<div id="menu-overlay">
+  <div id="menu-panel" role="dialog" aria-modal="true" aria-label="Menu">
+    <button class="menu-close" onclick="closeMenu()" aria-label="Chiudi menu">✕</button>
+    <div class="menu-app-title">YouC</div>
+    <div class="menu-app-sub">Year Oriented Universal Calendar</div>
+    <div class="menu-meta" id="menu-version-line"><!-- popolato da JS --></div>
+    <div class="menu-divider"></div>
+    <button class="menu-btn" onclick="menuRefresh()">
+      <div class="menu-btn-icon refresh">↺</div>
+      <div>
+        <div class="menu-btn-label">Aggiorna</div>
+        <div class="menu-btn-desc">Ricarica il sorgente dal server</div>
+      </div>
+    </button>
+    <button class="menu-btn" onclick="menuSetup()">
+      <div class="menu-btn-icon setup">⚙</div>
+      <div>
+        <div class="menu-btn-label">Impostazioni</div>
+        <div class="menu-btn-desc">Configura l'applicazione</div>
+      </div>
+    </button>
+  </div>
+</div>
+
 <!-- Google API -->
 <script src="https://apis.google.com/js/api.js"></script>
 <script src="https://accounts.google.com/gsi/client"></script>
@@ -334,7 +426,7 @@
 // ══════════════════════════════════════════════════════════════
 // VERSIONE
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v7.20260607-000000';
+const APP_VERSION = 'v8.20260607-103000';
 document.addEventListener('DOMContentLoaded', ()=>{
   const el = document.getElementById('overlay-version');
   if(el) el.textContent = APP_VERSION;
@@ -894,10 +986,13 @@ function build(){
     const h=document.createElement('div');
     h.className='cell ch';
     h.style.minHeight=CELL_H+'px';
+    h.style.cursor='pointer';
+    h.title='Menu';
     h.textContent=monthLabel(y,m);
     if(abs<todayAbs)h.classList.add('past');
     else if(abs===todayAbs)h.classList.add('current');
     if(m===0 && i>0)h.style.borderLeft='2px solid #1A1A18';
+    h.addEventListener('click', openMenu);
     g.appendChild(h);
   });
 
@@ -1434,6 +1529,48 @@ function closePickPopup(){
 document.addEventListener('DOMContentLoaded',()=>{
   const pp=document.getElementById('pick-popup');
   if(pp) pp.addEventListener('click',e=>{ if(e.target===pp) closePickPopup(); });
+});
+
+// ══════════════════════════════════════════════════════════════
+// MENU
+// ══════════════════════════════════════════════════════════════
+function openMenu(){
+  // Aggiorna la riga versione/autore ogni volta che si apre
+  const vl = document.getElementById('menu-version-line');
+  if(vl) vl.textContent = APP_VERSION + ' · Andrea Xotta';
+  const overlay = document.getElementById('menu-overlay');
+  overlay.classList.add('open');
+  // Chiudi con tap sull'overlay esterno
+  overlay.addEventListener('click', _menuOverlayClick);
+}
+
+function closeMenu(){
+  const overlay = document.getElementById('menu-overlay');
+  overlay.classList.remove('open');
+  overlay.removeEventListener('click', _menuOverlayClick);
+}
+
+function _menuOverlayClick(e){
+  if(e.target === document.getElementById('menu-overlay')) closeMenu();
+}
+
+function menuRefresh(){
+  closeMenu();
+  // Hard reload dal server (bypassa cache)
+  window.location.reload(true);
+}
+
+function menuSetup(){
+  closeMenu();
+  showToast('Nessuna impostazione disponibile');
+}
+
+// Chiudi menu con Escape
+document.addEventListener('keydown', e=>{
+  if(e.key==='Escape'){
+    const overlay = document.getElementById('menu-overlay');
+    if(overlay && overlay.classList.contains('open')){ closeMenu(); }
+  }
 });
 
 // ══════════════════════════════════════════════════════════════
