@@ -192,8 +192,37 @@
     .ev-btn.del{background:#E53935;color:#fff;flex:0 0 auto;padding:9px 16px}
     .ev-btn.cancel{background:#f5f5f3;color:#1A1A18;border:0.5px solid #ccc}
     .ev-color-row{display:flex;gap:6px;flex-wrap:wrap}
-    #ev-color-select{ font-weight:500; transition: background .15s; }
     #ev-saving{font-size:11px;color:#888;text-align:center;min-height:16px}
+
+    /* ── RIGA TITOLO + SWATCH CATEGORIA ── */
+    .ev-title-row{
+      display:flex;align-items:center;gap:8px;position:relative;
+    }
+    .ev-title-row input[type=text]{flex:1}
+    #ev-cat-swatch{
+      width:32px;height:32px;border-radius:6px;flex-shrink:0;
+      cursor:pointer;border:1.5px solid rgba(0,0,0,.12);
+      transition:transform .12s,box-shadow .12s;
+    }
+    #ev-cat-swatch:hover{transform:scale(1.08);box-shadow:0 2px 8px rgba(0,0,0,.18)}
+    #ev-cat-dropdown{
+      display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:600;
+      background:#fff;border:1px solid #ddd;border-radius:10px;
+      box-shadow:0 6px 24px rgba(0,0,0,.15);padding:6px;
+      min-width:180px;
+    }
+    #ev-cat-dropdown.open{display:block}
+    .ev-cat-opt{
+      display:flex;align-items:center;gap:10px;
+      padding:7px 10px;border-radius:6px;cursor:pointer;
+      font-size:13px;color:#1A1A18;transition:background .1s;
+    }
+    .ev-cat-opt:hover{background:#f5f5f3}
+    .ev-cat-opt.selected{background:#f0f0ee;font-weight:600}
+    .ev-cat-dot{
+      width:20px;height:20px;border-radius:4px;flex-shrink:0;
+      border:1px solid rgba(0,0,0,.1);
+    }
 
     /* ── TOAST notifica aggiornamento ── */
     #toast{
@@ -242,12 +271,16 @@
     <div id="ev-form">
     <h2 id="ev-title-label">Nuovo evento</h2>
     <div id="ev-color-wrap">
-      <label>Categoria</label>
-      <select id="ev-color-select"></select>
-    </div>
-    <div>
       <label>Titolo</label>
-      <input type="text" id="ev-title" placeholder="Aggiungi titolo"/>
+      <div class="ev-title-row">
+        <!-- Quadrato categoria cliccabile -->
+        <div id="ev-cat-swatch" title="Cambia categoria"></div>
+        <!-- Dropdown custom categoria -->
+        <div id="ev-cat-dropdown">
+          <!-- popolato da buildColorSelect() -->
+        </div>
+        <input type="text" id="ev-title" placeholder="Aggiungi titolo"/>
+      </div>
     </div>
     <div>
       <label>Descrizione</label>
@@ -1134,33 +1167,49 @@ let currentCalendarId = null;
 let selectedColorId  = '8';
 
 function buildColorSelect(){
-  const sel = document.getElementById('ev-color-select');
-  if(!sel) return;
-  sel.innerHTML = '';
+  const dropdown = document.getElementById('ev-cat-dropdown');
+  if(!dropdown) return;
+  dropdown.innerHTML = '';
   CATEGORIES.forEach(c=>{
-    const opt = document.createElement('option');
-    opt.value = c.id;
-    opt.textContent = c.label;
-    opt.style.background = c.bg;
-    opt.style.color = (c.id==='10'||c.id==='11') ? '#fff' : '#1A1A18';
-    sel.appendChild(opt);
+    const opt = document.createElement('div');
+    opt.className = 'ev-cat-opt' + (c.id === selectedColorId ? ' selected' : '');
+    opt.dataset.id = c.id;
+    opt.innerHTML = `<div class="ev-cat-dot" style="background:${c.bg}"></div><span>${c.label}</span>`;
+    opt.addEventListener('click', ()=>{
+      selectedColorId = c.id;
+      updateSwatchBg();
+      dropdown.classList.remove('open');
+      // aggiorna selected highlight
+      dropdown.querySelectorAll('.ev-cat-opt').forEach(o => o.classList.toggle('selected', o.dataset.id === c.id));
+    });
+    dropdown.appendChild(opt);
   });
-  sel.value = selectedColorId;
-  updateSelectBg();
-  sel.onchange = ()=>{ selectedColorId = sel.value; updateSelectBg(); };
+  updateSwatchBg();
 }
 
-function updateSelectBg(){
-  const sel = document.getElementById('ev-color-select');
-  if(!sel) return;
-  const cat = CATEGORIES.find(c=>c.id===sel.value);
-  if(cat){
-    sel.style.background = cat.bg;
-    sel.style.color = (cat.id==='10'||cat.id==='11') ? '#fff' : '#1A1A18';
-    sel.style.fontWeight = '500';
-  }
-  selectedColorId = sel.value;
+function updateSwatchBg(){
+  const swatch = document.getElementById('ev-cat-swatch');
+  if(!swatch) return;
+  const cat = CATEGORIES.find(c=>c.id===selectedColorId);
+  if(cat) swatch.style.background = cat.bg;
 }
+
+// Alias per compatibilità con codice esistente che chiama updateSelectBg
+function updateSelectBg(){ updateSwatchBg(); }
+
+// Toggle dropdown al click sul swatch
+document.addEventListener('DOMContentLoaded', ()=>{
+  const swatch = document.getElementById('ev-cat-swatch');
+  const dropdown = document.getElementById('ev-cat-dropdown');
+  if(swatch && dropdown){
+    swatch.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      dropdown.classList.toggle('open');
+    });
+    document.addEventListener('click', ()=>{ dropdown.classList.remove('open'); });
+    dropdown.addEventListener('click', (e)=>e.stopPropagation());
+  }
+});
 
 function buildCalSelect(selectedCal){
   const sel = document.getElementById('ev-cal');
@@ -1274,8 +1323,7 @@ async function saveEvent(){
   const endTime  = document.getElementById('ev-end-time').value;
   const desc     = document.getElementById('ev-desc').value.trim();
   const calId    = document.getElementById('ev-cal').value;
-  const colorSel = document.getElementById('ev-color-select');
-  if(colorSel && calId===CONFIG.CALENDAR_ID) selectedColorId = colorSel.value;
+  // selectedColorId is updated directly by the category swatch dropdown
 
   if(!startDate||!endDate){ document.getElementById('ev-saving').textContent='Inserisci le date.'; return; }
 
