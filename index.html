@@ -367,7 +367,7 @@
       </div>
       <div id="ev-start-time-wrap" style="display:none">
         <label>Ora inizio</label>
-        <input type="time" id="ev-start-time" value="09:00"/>
+        <input type="time" id="ev-start-time" value="09:00" step="300"/>
       </div>
     </div>
     <div class="ev-row">
@@ -377,7 +377,7 @@
       </div>
       <div id="ev-end-time-wrap" style="display:none">
         <label>Ora fine</label>
-        <input type="time" id="ev-end-time" value="10:00"/>
+        <input type="time" id="ev-end-time" value="10:00" step="300"/>
       </div>
     </div>
     <div>
@@ -426,7 +426,7 @@
 // ══════════════════════════════════════════════════════════════
 // VERSIONE
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v8.20260607-103000';
+const APP_VERSION = 'v9.260607-1036';
 document.addEventListener('DOMContentLoaded', ()=>{
   const el = document.getElementById('overlay-version');
   if(el) el.textContent = APP_VERSION;
