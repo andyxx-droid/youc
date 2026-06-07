@@ -367,7 +367,7 @@
       </div>
       <div id="ev-start-time-wrap" style="display:none">
         <label>Ora inizio</label>
-        <input type="time" id="ev-start-time" value="09:00" step="300"/>
+        <select id="ev-start-time"></select>
       </div>
     </div>
     <div class="ev-row">
@@ -377,7 +377,7 @@
       </div>
       <div id="ev-end-time-wrap" style="display:none">
         <label>Ora fine</label>
-        <input type="time" id="ev-end-time" value="10:00" step="300"/>
+        <select id="ev-end-time"></select>
       </div>
     </div>
     <div>
@@ -426,7 +426,7 @@
 // ══════════════════════════════════════════════════════════════
 // VERSIONE
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v9.260607-1036';
+const APP_VERSION = 'v9.260607-1043';
 document.addEventListener('DOMContentLoaded', ()=>{
   const el = document.getElementById('overlay-version');
   if(el) el.textContent = APP_VERSION;
@@ -1351,6 +1351,45 @@ function buildCalSelect(selectedCal){
   updateColorVis();
 }
 
+// ── Popola <select> orario con step di 5 minuti ──────────────
+function buildTimeSelect(selectId, defaultValue){
+  const sel = document.getElementById(selectId);
+  if(!sel) return;
+  sel.innerHTML = '';
+  for(let h=0; h<24; h++){
+    for(let m=0; m<60; m+=5){
+      const hh = String(h).padStart(2,'0');
+      const mm = String(m).padStart(2,'0');
+      const val = `${hh}:${mm}`;
+      const opt = document.createElement('option');
+      opt.value = val;
+      opt.textContent = val;
+      if(val === defaultValue) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+}
+
+function setTimeSelect(selectId, value){
+  // Arrotonda al multiplo di 5 minuti più vicino
+  if(!value) return;
+  const [h, m] = value.split(':').map(Number);
+  const rounded = Math.round(m/5)*5;
+  const hh = String(h).padStart(2,'0');
+  const mm = String(rounded >= 60 ? 0 : rounded).padStart(2,'0');
+  const roundedVal = `${hh}:${mm}`;
+  const sel = document.getElementById(selectId);
+  if(!sel) return;
+  // Prova corrispondenza esatta, altrimenti prima opzione disponibile
+  const match = Array.from(sel.options).find(o => o.value === roundedVal);
+  if(match) match.selected = true;
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  buildTimeSelect('ev-start-time', '09:00');
+  buildTimeSelect('ev-end-time',   '10:00');
+});
+
 function toggleAllDay(){
   const allday = document.getElementById('ev-allday').checked;
   document.getElementById('ev-start-time-wrap').style.display = allday?'none':'block';
@@ -1378,8 +1417,8 @@ function openPopup(dk, evId){
       const allday = !ev.time;
       document.getElementById('ev-allday').checked = allday;
       if(!allday){
-        document.getElementById('ev-start-time').value = ev.time || '09:00';
-        document.getElementById('ev-end-time').value   = ev.timeEnd || '10:00';
+        setTimeSelect('ev-start-time', ev.time || '09:00');
+        setTimeSelect('ev-end-time',   ev.timeEnd || '10:00');
       }
       // Imposta colore PRIMA di buildColorSelect
       if(ev.colorId) selectedColorId = String(ev.colorId);
@@ -1397,8 +1436,8 @@ function openPopup(dk, evId){
     document.getElementById('ev-start-date').value = dk;
     document.getElementById('ev-end-date').value   = dk;
     document.getElementById('ev-allday').checked   = true;
-    document.getElementById('ev-start-time').value = '09:00';
-    document.getElementById('ev-end-time').value   = '10:00';
+    setTimeSelect('ev-start-time', '09:00');
+    setTimeSelect('ev-end-time',   '10:00');
     buildColorSelect();
     buildCalSelect(CONFIG.CALENDAR_ID);
     toggleAllDay();
