@@ -564,7 +564,7 @@
 // ══════════════════════════════════════════════════════════════
 // VERSIONE
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v9.260607-1614';
+const APP_VERSION = 'v9.260607-1631';
 document.addEventListener('DOMContentLoaded', ()=>{
   const el = document.getElementById('overlay-version');
   if(el) el.textContent = APP_VERSION;
@@ -1613,6 +1613,20 @@ function closeTimePicker(doSave){
   document.getElementById('tp-modal').classList.remove('open');
   _tpPrefix = null;
 }
+
+// Rotella mouse: scorra di un item alla volta
+document.addEventListener('DOMContentLoaded', ()=>{
+  ['tp-drum-h','tp-drum-m'].forEach(id=>{
+    const drum = document.getElementById(id);
+    if(!drum) return;
+    drum.addEventListener('wheel', e=>{
+      e.preventDefault();
+      const dir = e.deltaY > 0 ? 1 : -1;
+      const current = Math.round(drum.scrollTop / ITEM_H);
+      drum.scrollTo({ top: (current + dir) * ITEM_H, behavior:'smooth' });
+    }, { passive: false });
+  });
+});
 
 // Chiudi toccando lo sfondo
 document.addEventListener('DOMContentLoaded', ()=>{
