@@ -79,8 +79,7 @@
     .cd.holiday{background:#1A1A18;color:#fff}
     .cd.today{background:#E53935 !important;color:#fff !important}
     .cd.noscuola{background:#FFDDDD;color:#1A1A18}
-    .cd.past-day{background:#EEEEED;color:#AAAAAA}
-    .cell.past-day{background:#F4F4F2}
+    .cell.past-day{background:#E4E4E2}
     .cd.week-sep{border-top:1.5px dashed #1A1A18}
 
     .cell-empty{
@@ -574,7 +573,7 @@
 // ══════════════════════════════════════════════════════════════
 // VERSIONE
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v11b.260610-1532';
+const APP_VERSION = 'v11b.260610-1538';
 document.addEventListener('DOMContentLoaded', ()=>{
   const el = document.getElementById('overlay-version');
   if(el) el.textContent = APP_VERSION;
@@ -1183,7 +1182,6 @@ function build(){
         else if(dow===6)dn.classList.add('sat');
         else if(dow===0)dn.classList.add('sun');
         else if(isNoScuola)dn.classList.add('noscuola');
-        if(isPast)dn.classList.add('past-day');
         const isLastDayOfMonth = d===dim(m,y);
         if(d===31 || isLastDayOfMonth){dn.style.borderBottom='1px solid #1A1A18';}
         g.appendChild(dn);
