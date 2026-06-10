@@ -79,17 +79,7 @@
     .cd.holiday{background:#1A1A18;color:#fff}
     .cd.today{background:#E53935 !important;color:#fff !important}
     .cd.noscuola{background:#FFDDDD;color:#1A1A18}
-    .cell.past-day{
-      'background-color:#F0F0E8;
-      background:#fff;
-      background-image:repeating-linear-gradient(
-        -45deg,
-        transparent,
-        transparent 3px,
-        rgba(200,200,200,1) 2px,
-        rgba(200,200,200,1) 4px
-      );
-    }
+    .cell.past-day{background:#F0F0E8}
     .cd.week-sep{border-top:1.5px dashed #1A1A18}
 
     .cell-empty{
@@ -583,7 +573,7 @@
 // ══════════════════════════════════════════════════════════════
 // VERSIONE
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v15.260610-2214';
+const APP_VERSION = 'v14.260610-2155';
 document.addEventListener('DOMContentLoaded', ()=>{
   const el = document.getElementById('overlay-version');
   if(el) el.textContent = APP_VERSION;
