@@ -79,6 +79,8 @@
     .cd.holiday{background:#1A1A18;color:#fff}
     .cd.today{background:#E53935 !important;color:#fff !important}
     .cd.noscuola{background:#FFDDDD;color:#1A1A18}
+    .cd.past-day{background:#EEEEED;color:#AAAAAA}
+    .cell.past-day{background:#F4F4F2}
     .cd.week-sep{border-top:1.5px dashed #1A1A18}
 
     .cell-empty{
@@ -93,7 +95,7 @@
     .dc:hover{filter:brightness(0.96)}
 
     .hstrip{
-      height:8px;border-radius:3px;
+      height:10px;border-radius:3px;
       position:absolute;
       display:flex;align-items:center;
       padding:0 3px;overflow:hidden;
@@ -572,7 +574,7 @@
 // ══════════════════════════════════════════════════════════════
 // VERSIONE
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v12.260610-1458';
+const APP_VERSION = 'v11b.260610-1532';
 document.addEventListener('DOMContentLoaded', ()=>{
   const el = document.getElementById('overlay-version');
   if(el) el.textContent = APP_VERSION;
@@ -595,41 +597,22 @@ const CONFIG = {
 // COLORI GOOGLE CALENDAR (personalizzati)
 // ══════════════════════════════════════════════════════════════
 const GC = {
-  1: {bg:'#C8BFFF',fg:'#3C3489',stripe:'#8B7FCC'}, // Lavanda
-  2: {bg:'#B2DFB0',fg:'#1B5E20',stripe:'#6AAB67'}, // Salvia — LETTORE
+  1: {bg:'#C8BFFF',fg:'#3C3489'}, // Lavanda
+  2: {bg:'#B2DFB0',fg:'#1B5E20'}, // Salvia — LETTORE
 //  3: {bg:'#B39DDB',fg:'#26215C'}, // Uva
-  3: {bg:'#B39DDB',fg:'#FFFFFF',stripe:'#7A5FB5'}, // Uva - DI ALTRI
+  3: {bg:'#B39DDB',fg:'#FFFFFF'}, // Uva - DI ALTRI
 //  4: {bg:'#F8BBD0',fg:'#880E4F'}, // Fenicottero
-  4: {bg:'#FF8888',fg:'#FFFF',  stripe:'#CC4444'}, // Fenicottero — IN FAMIGLIA
-  5: {bg:'#FFF176',fg:'#633806',stripe:'#C9B800'}, // Banana - VIAGGIO
-  6: {bg:'#FFAB76',fg:'#712B13',stripe:'#CC6A2A'}, // Mandarino
-  7: {bg:'#76D7EA',fg:'#0C447C',stripe:'#2FA0BF'}, // Pavone
+  4: {bg:'#FF8888',fg:'#FFFF'}, // Fenicottero — IN FAMIGLIA
+  5: {bg:'#FFF176',fg:'#633806'}, // Banana - VIAGGIO
+  6: {bg:'#FFAB76',fg:'#712B13'}, // Mandarino
+  7: {bg:'#76D7EA',fg:'#0C447C'}, // Pavone
 //  8: {bg:'#B0BEC5',fg:'#2C2C2A'}, // Grafite - INFO
-  8: {bg:'#B0BEC5',fg:'#FFFFFF',stripe:'#6E8490'}, // Grafite - INFO
-  9: {bg:'#9FA8DA',fg:'#26215C',stripe:'#5C6CB0'}, // Mirtillo - VOLLEY
-  10:{bg:'#2E7D32',fg:'#ffffff',stripe:'#1A4A1D'}, // Basilico — COOPERATORI
-  11:{bg:'#E53935',fg:'#ffffff',stripe:'#9B1B18'}, // Pomodoro — EVENTO
-  def:{bg:'#BDBDBD',fg:'#444441',stripe:'#888884'}
+  8: {bg:'#B0BEC5',fg:'#FFFFFF'}, // Grafite - INFO
+  9: {bg:'#9FA8DA',fg:'#26215C'}, // Mirtillo - VOLLEY
+  10:{bg:'#2E7D32',fg:'#ffffff'}, // Basilico — COOPERATORI
+  11:{bg:'#E53935',fg:'#ffffff'}, // Pomodoro — EVENTO
+  def:{bg:'#BDBDBD',fg:'#444441'}
 };
-
-// ══════════════════════════════════════════════════════════════
-// EVENTI PASSATI — pattern diagonale per colore
-// ══════════════════════════════════════════════════════════════
-
-// Restituisce true se l'evento è completamente passato (ultimo giorno già trascorso)
-function isPastEvent(ev) {
-  // Confronta endMs con la mezzanotte di oggi (inizio giornata corrente)
-  const todayStart = new Date(td.getFullYear(), td.getMonth(), td.getDate()).getTime();
-  return ev.endMs < todayStart;
-}
-
-// Genera un background CSS con pattern diagonale continuo usando repeating-linear-gradient.
-// Il gradiente è indipendente dall'origine dell'elemento → le diagonali sono sempre continue.
-// stripeColor: colore delle righe diagonali (specifico per categoria)
-function pastPatternBg(bgColor, stripeColor) {
-  // Strisce a 45°: ogni 6px, riga colorata larga 2.5px
-  return `repeating-linear-gradient(135deg, ${stripeColor} 0px, ${stripeColor} 2.5px, ${bgColor} 2.5px, ${bgColor} 6px)`;
-}
 
 // ══════════════════════════════════════════════════════════════
 // STATO
@@ -1077,8 +1060,7 @@ function buildEventCell(dk,holidayName,isWeekSep,cellData,CELL_H){
     const ev=slotsObj[s];
     const strip=document.createElement('div');
     const left=1+s*SLOT_W;
-    const stripBg = isPastEvent(ev) ? pastPatternBg(ev.color.bg, ev.color.stripe||ev.color.fg) : ev.color.bg;
-    strip.style.cssText=`position:absolute;left:${left}px;width:8px;background:${stripBg};z-index:10;`;
+    strip.style.cssText=`position:absolute;left:${left}px;width:8px;background:${ev.color.bg};z-index:10;`;
     if(ev.pos==='start'){const top=slotTopMap[s]??startTop;strip.style.top=top+'px';strip.style.bottom='-1px';strip.style.borderRadius='4px 4px 0 0';}
     else if(ev.pos==='end'){strip.style.top='-1px';strip.style.bottom='2px';strip.style.borderRadius='0 0 4px 4px';}
     else if(ev.pos==='solo'){const top=slotTopMap[s]??startTop;strip.style.top=top+'px';strip.style.bottom=(CELL_H-top-STRIP_H)+'px';strip.style.borderRadius='4px';}
@@ -1089,8 +1071,7 @@ function buildEventCell(dk,holidayName,isWeekSep,cellData,CELL_H){
     const top=startTop+i*(STRIP_H+GAP);
     const hs=document.createElement('div');
     hs.className='hstrip';
-    const hsBg = isPastEvent(ev) ? pastPatternBg(ev.color.bg, ev.color.stripe||ev.color.fg) : ev.color.bg;
-    hs.style.cssText=`left:${leftPx}px;right:1px;top:${top}px;background:${hsBg};z-index:20;cursor:pointer;`;
+    hs.style.cssText=`left:${leftPx}px;right:1px;top:${top}px;background:${ev.color.bg};z-index:20;cursor:pointer;`;
     hs.dataset.evid=ev.id;
     const lbl=document.createElement('span');lbl.className='hstrip-lbl';lbl.style.color=ev.color.fg;lbl.textContent=ev.title;
     hs.appendChild(lbl);c.appendChild(hs);
@@ -1195,17 +1176,20 @@ function build(){
         if(isWeekSep)dn.classList.add('week-sep');
         if(isYearBoundary)dn.style.borderLeft='2px solid #1A1A18';
         const isNoScuola=NOSCUOLA.has(dk);
+        const isPast=!isToday&&(y<td.getFullYear()||(y===td.getFullYear()&&m<td.getMonth())||(y===td.getFullYear()&&m===td.getMonth()&&d<td.getDate()));
         dn.textContent=d;
         if(isToday)dn.classList.add('today');
         else if(isHoliday)dn.classList.add('holiday');
         else if(dow===6)dn.classList.add('sat');
         else if(dow===0)dn.classList.add('sun');
         else if(isNoScuola)dn.classList.add('noscuola');
+        if(isPast)dn.classList.add('past-day');
         const isLastDayOfMonth = d===dim(m,y);
         if(d===31 || isLastDayOfMonth){dn.style.borderBottom='1px solid #1A1A18';}
         g.appendChild(dn);
         const evCell=buildEventCell(dk,isHoliday?holidayName:null,isWeekSep,cellData,CELL_H);
         evCell.style.minHeight=CELL_H+'px';
+        if(isPast)evCell.classList.add('past-day');
         if(d===31 || isLastDayOfMonth)evCell.style.borderBottom='1px solid #1A1A18';
         g.appendChild(evCell);
       }
