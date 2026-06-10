@@ -572,7 +572,7 @@
 // ══════════════════════════════════════════════════════════════
 // VERSIONE
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v10.260607-1714';
+const APP_VERSION = 'v11.260610-12:39';
 document.addEventListener('DOMContentLoaded', ()=>{
   const el = document.getElementById('overlay-version');
   if(el) el.textContent = APP_VERSION;
@@ -611,6 +611,27 @@ const GC = {
   11:{bg:'#E53935',fg:'#ffffff'}, // Pomodoro — EVENTO
   def:{bg:'#BDBDBD',fg:'#444441'}
 };
+
+// ══════════════════════════════════════════════════════════════
+// EVENTI PASSATI — pattern diagonale per colore
+// ══════════════════════════════════════════════════════════════
+
+// Restituisce true se l'evento è completamente passato (ultimo giorno già trascorso)
+function isPastEvent(ev) {
+  // Confronta endMs con la mezzanotte di oggi (inizio giornata corrente)
+  const todayStart = new Date(td.getFullYear(), td.getMonth(), td.getDate()).getTime();
+  return ev.endMs < todayStart;
+}
+
+// Genera un background CSS con pattern diagonale usando SVG inline,
+// sovrapposto al colore base dell'evento
+function pastPatternBg(bgColor) {
+  // Pattern: strisce diagonali semitrasparenti bianche su sfondo colorato
+  // Le strisce sono a 45° con spacing regolare
+  const svgStripe = `<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'><line x1='0' y1='8' x2='8' y2='0' stroke='rgba(255,255,255,0.55)' stroke-width='2.5'/></svg>`;
+  const encoded = encodeURIComponent(svgStripe);
+  return `url("data:image/svg+xml,${encoded}"), ${bgColor}`;
+}
 
 // ══════════════════════════════════════════════════════════════
 // STATO
@@ -1058,7 +1079,8 @@ function buildEventCell(dk,holidayName,isWeekSep,cellData,CELL_H){
     const ev=slotsObj[s];
     const strip=document.createElement('div');
     const left=1+s*SLOT_W;
-    strip.style.cssText=`position:absolute;left:${left}px;width:8px;background:${ev.color.bg};z-index:10;`;
+    const stripBg = isPastEvent(ev) ? pastPatternBg(ev.color.bg) : ev.color.bg;
+    strip.style.cssText=`position:absolute;left:${left}px;width:8px;background:${stripBg};z-index:10;`;
     if(ev.pos==='start'){const top=slotTopMap[s]??startTop;strip.style.top=top+'px';strip.style.bottom='-1px';strip.style.borderRadius='4px 4px 0 0';}
     else if(ev.pos==='end'){strip.style.top='-1px';strip.style.bottom='2px';strip.style.borderRadius='0 0 4px 4px';}
     else if(ev.pos==='solo'){const top=slotTopMap[s]??startTop;strip.style.top=top+'px';strip.style.bottom=(CELL_H-top-STRIP_H)+'px';strip.style.borderRadius='4px';}
@@ -1069,7 +1091,8 @@ function buildEventCell(dk,holidayName,isWeekSep,cellData,CELL_H){
     const top=startTop+i*(STRIP_H+GAP);
     const hs=document.createElement('div');
     hs.className='hstrip';
-    hs.style.cssText=`left:${leftPx}px;right:1px;top:${top}px;background:${ev.color.bg};z-index:20;cursor:pointer;`;
+    const hsBg = isPastEvent(ev) ? pastPatternBg(ev.color.bg) : ev.color.bg;
+    hs.style.cssText=`left:${leftPx}px;right:1px;top:${top}px;background:${hsBg};z-index:20;cursor:pointer;`;
     hs.dataset.evid=ev.id;
     const lbl=document.createElement('span');lbl.className='hstrip-lbl';lbl.style.color=ev.color.fg;lbl.textContent=ev.title;
     hs.appendChild(lbl);c.appendChild(hs);
