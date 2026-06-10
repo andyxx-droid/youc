@@ -572,7 +572,7 @@
 // ══════════════════════════════════════════════════════════════
 // VERSIONE
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v11.260610-1259';
+const APP_VERSION = 'v11.260610-1310';
 document.addEventListener('DOMContentLoaded', ()=>{
   const el = document.getElementById('overlay-version');
   if(el) el.textContent = APP_VERSION;
@@ -623,13 +623,12 @@ function isPastEvent(ev) {
   return ev.endMs < todayStart;
 }
 
-// Genera un background CSS con pattern diagonale usando SVG inline,
-// sovrapposto al colore base dell'evento.
+// Genera un background CSS con pattern diagonale continuo usando repeating-linear-gradient.
+// Il gradiente è indipendente dall'origine dell'elemento → le diagonali sono sempre continue.
 // stripeColor: colore delle righe diagonali (specifico per categoria)
 function pastPatternBg(bgColor, stripeColor) {
-  const svgStripe = `<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'><line x1='0' y1='8' x2='8' y2='0' stroke='${stripeColor}' stroke-width='2.5'/></svg>`;
-  const encoded = encodeURIComponent(svgStripe);
-  return `url("data:image/svg+xml,${encoded}"), ${bgColor}`;
+  // Strisce a 45°: ogni 6px, riga colorata larga 2.5px
+  return `repeating-linear-gradient(135deg, ${stripeColor} 0px, ${stripeColor} 2.5px, ${bgColor} 2.5px, ${bgColor} 6px)`;
 }
 
 // ══════════════════════════════════════════════════════════════
