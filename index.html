@@ -573,7 +573,7 @@
 // ══════════════════════════════════════════════════════════════
 // VERSIONE
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v12.260610-2109';
+const APP_VERSION = 'v13.260610-2120';
 document.addEventListener('DOMContentLoaded', ()=>{
   const el = document.getElementById('overlay-version');
   if(el) el.textContent = APP_VERSION;
@@ -1284,37 +1284,24 @@ document.addEventListener('keydown', async e=>{
 
 // ══════════════════════════════════════════════════════════════
 // NAVIGAZIONE TOUCH (Android)
-// swipe dx su intestazione mesi          → ctrl+← (indietro finestra)
-// swipe sx su intestazione mesi          → ctrl+→ (avanti finestra)
-// swipe dx fuori intestazione            → ctrl+↑ (meno mesi)
-// swipe sx fuori intestazione            → ctrl+↓ (più mesi)
+// swipe dx su metà alta schermo           → ctrl+← (indietro finestra)
+// swipe sx su metà alta schermo           → ctrl+→ (avanti finestra)
+// swipe dx su metà bassa schermo          → ctrl+↑ (meno mesi)
+// swipe sx su metà bassa schermo          → ctrl+↓ (più mesi)
 // ══════════════════════════════════════════════════════════════
 (function(){
   const MIN_SWIPE  = 50;   // px minimi per riconoscere uno swipe
 
-  let touchStartX  = 0;
-  let touchStartY  = 0;
-  let swipeOnHeader = false; // lo swipe è partito sulla riga intestazione mesi?
-
-  // Restituisce true se il punto (x,y) è sulla riga di intestazione dei mesi
-  function isOnHeader(x, y){
-    const grid = document.getElementById('grid');
-    if(!grid) return false;
-    const rect = grid.getBoundingClientRect();
-    // La riga header è la prima riga della griglia
-    // Prendiamo il primo elemento .ch per conoscerne l'altezza
-    const firstCh = grid.querySelector('.ch');
-    if(!firstCh) return false;
-    const chRect = firstCh.getBoundingClientRect();
-    return y >= chRect.top && y <= chRect.bottom && x >= rect.left && x <= rect.right;
-  }
+  let touchStartX   = 0;
+  let touchStartY   = 0;
+  let swipeTopHalf  = false; // lo swipe è partito sulla metà alta dello schermo?
 
   document.addEventListener('touchstart', e=>{
     if(e.touches.length !== 1) return;
     const t = e.touches[0];
-    touchStartX = t.clientX;
-    touchStartY = t.clientY;
-    swipeOnHeader = isOnHeader(t.clientX, t.clientY);
+    touchStartX  = t.clientX;
+    touchStartY  = t.clientY;
+    swipeTopHalf = t.clientY < window.innerHeight / 2;
   }, {passive: true});
 
   document.addEventListener('touchend', async e=>{
@@ -1326,8 +1313,8 @@ document.addEventListener('keydown', async e=>{
     // Swipe valido solo se orizzontale dominante
     if(Math.abs(dx) < MIN_SWIPE || Math.abs(dx) < Math.abs(dy)) return;
 
-    if(swipeOnHeader){
-      // Swipe sulla riga intestazione mesi → sposta finestra
+    if(swipeTopHalf){
+      // Swipe su metà alta → sposta finestra
       if(dx > 0){
         windowStart--;           // swipe destra → ctrl+←
       } else {
@@ -1335,7 +1322,7 @@ document.addEventListener('keydown', async e=>{
       }
       await loadAllData();
     } else {
-      // Swipe fuori intestazione → cambia numero mesi
+      // Swipe su metà bassa → cambia numero mesi
       if(dx > 0){
         if(windowSize > 1){ windowSize--; await loadAllData(); }   // ctrl+↑
       } else {
