@@ -79,6 +79,8 @@
     .cd.holiday{background:#1A1A18;color:#fff}
     .cd.today{background:#E53935 !important;color:#fff !important;border-top:2px solid #E53935 !important;border-bottom:2px solid #E53935 !important}
     .cell.today-cell{border-top:2px solid #E53935 !important;border-bottom:2px solid #E53935 !important}
+    html.no-today-border .cd.today{border-top:none !important;border-bottom:none !important}
+    html.no-today-border .cell.today-cell{border-top:none !important;border-bottom:none !important}
     .cd.noscuola{background:#FFDDDD;color:#1A1A18}
     .cell.past-day{background:#F0F0E8}
     .cd.week-sep{border-top:1.5px dashed #1A1A18}
@@ -410,6 +412,45 @@
       transition:background .12s,color .12s;
     }
     .menu-close:hover{background:#eceae4;color:#1A1A18}
+
+    /* ── PANNELLO IMPOSTAZIONI ── */
+    #settings-panel{
+      display:none;
+      flex-direction:column;gap:0;
+      margin-top:4px;
+    }
+    #settings-panel.open{display:flex}
+    .settings-row{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:12px 14px;border-radius:10px;
+      background:#eceae4;
+      gap:12px;
+    }
+    .settings-row-label{
+      display:flex;flex-direction:column;gap:2px;
+    }
+    .settings-row-label span{font-size:14px;font-weight:500;color:#1A1A18}
+    .settings-row-label small{font-size:11px;color:#aaa}
+    /* Toggle switch */
+    .toggle{
+      position:relative;width:44px;height:26px;flex-shrink:0;
+    }
+    .toggle input{opacity:0;width:0;height:0;position:absolute}
+    .toggle-track{
+      position:absolute;inset:0;
+      background:#ccc;border-radius:13px;
+      cursor:pointer;transition:background .2s;
+    }
+    .toggle input:checked + .toggle-track{background:#E53935}
+    .toggle-thumb{
+      position:absolute;top:3px;left:3px;
+      width:20px;height:20px;border-radius:50%;
+      background:#fff;
+      box-shadow:0 1px 4px rgba(0,0,0,.2);
+      transition:transform .2s;
+      pointer-events:none;
+    }
+    .toggle input:checked ~ .toggle-thumb{transform:translateX(18px)}
   </style>
 </head>
 <body>
@@ -563,6 +604,21 @@
         <div class="menu-btn-desc">Configura l'applicazione</div>
       </div>
     </button>
+
+    <!-- Pannello impostazioni espandibile -->
+    <div id="settings-panel">
+      <div class="settings-row">
+        <div class="settings-row-label">
+          <span>Bordo rosso oggi</span>
+          <small>Evidenzia il giorno corrente con bordi rossi</small>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="setting-today-border" onchange="applyTodayBorderSetting()"/>
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -574,10 +630,11 @@
 // ══════════════════════════════════════════════════════════════
 // VERSIONE
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v14.260610-2155';
+const APP_VERSION = 'v1.16.260617-2335';
 document.addEventListener('DOMContentLoaded', ()=>{
   const el = document.getElementById('overlay-version');
   if(el) el.textContent = APP_VERSION;
+  initSettings();
 });
 
 // ══════════════════════════════════════════════════════════════
@@ -1822,6 +1879,9 @@ function closeMenu(){
   const overlay = document.getElementById('menu-overlay');
   overlay.classList.remove('open');
   overlay.removeEventListener('click', _menuOverlayClick);
+  // Chiudi anche il pannello impostazioni
+  const sp = document.getElementById('settings-panel');
+  if(sp) sp.classList.remove('open');
 }
 
 function _menuOverlayClick(e){
@@ -1843,9 +1903,50 @@ function menuResetView(){
 }
 
 function menuSetup(){
-  closeMenu();
-  showToast('Nessuna impostazione disponibile');
+  const panel = document.getElementById('settings-panel');
+  panel.classList.toggle('open');
 }
+
+// ══════════════════════════════════════════════════════════════
+// IMPOSTAZIONI
+// ══════════════════════════════════════════════════════════════
+const SETTINGS_KEY = 'youc_settings';
+
+function loadSettings(){
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch(e){ return {}; }
+}
+
+function saveSettings(s){
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch(e){}
+}
+
+function applyTodayBorderSetting(){
+  const checked = document.getElementById('setting-today-border').checked;
+  const s = loadSettings();
+  s.todayBorder = checked;
+  saveSettings(s);
+  if(checked){
+    document.documentElement.classList.remove('no-today-border');
+  } else {
+    document.documentElement.classList.add('no-today-border');
+  }
+}
+
+function initSettings(){
+  const s = loadSettings();
+  const checked = s.todayBorder !== false; // default: attivo
+  const cb = document.getElementById('setting-today-border');
+  if(cb) cb.checked = checked;
+  // Applica stato iniziale via CSS class su html (più efficiente)
+  if(!checked){
+    document.documentElement.classList.add('no-today-border');
+  }
+}
+
+// Chiudi il pannello impostazioni quando si chiude il menu (gestito dentro closeMenu)
 
 // Chiudi menu con Escape
 document.addEventListener('keydown', e=>{
