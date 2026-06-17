@@ -77,7 +77,8 @@
     .cd.sat{background:#A8A79F;color:#fff}
     .cd.sun{background:#1A1A18;color:#fff}
     .cd.holiday{background:#1A1A18;color:#fff}
-    .cd.today{background:#E53935 !important;color:#fff !important}
+    .cd.today{background:#E53935 !important;color:#fff !important;border-top:2px solid #E53935 !important;border-bottom:2px solid #E53935 !important}
+    .cell.today-cell{border-top:2px solid #E53935 !important;border-bottom:2px solid #E53935 !important}
     .cd.noscuola{background:#FFDDDD;color:#1A1A18}
     .cell.past-day{background:#F0F0E8}
     .cd.week-sep{border-top:1.5px dashed #1A1A18}
@@ -1188,7 +1189,9 @@ function build(){
         const evCell=buildEventCell(dk,isHoliday?holidayName:null,isWeekSep,cellData,CELL_H);
         evCell.style.minHeight=CELL_H+'px';
         if(isPast)evCell.classList.add('past-day');
-        if(d===31 || isLastDayOfMonth)evCell.style.borderBottom='1px solid #1A1A18';
+        if(isToday)evCell.classList.add('today-cell');
+        if((d===31 || isLastDayOfMonth) && !isToday)evCell.style.borderBottom='1px solid #1A1A18';
+        if((d===31 || isLastDayOfMonth) && isToday)evCell.style.borderBottom='';
         g.appendChild(evCell);
       }
     });
