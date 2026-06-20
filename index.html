@@ -345,6 +345,25 @@
     }
     #toast.show{opacity:1}
 
+    /* ── BADGE OFFLINE ── */
+    #offline-badge{
+      display:none;
+      position:fixed;top:10px;right:12px;z-index:300;
+      background:#E53935;color:#fff;
+      border-radius:6px;padding:3px 8px;font-size:10px;font-weight:600;
+      letter-spacing:.5px;pointer-events:none;
+      box-shadow:0 2px 8px rgba(229,57,53,.35);
+    }
+    #offline-badge.visible{display:block}
+
+    /* ── INDICATORE CODA OFFLINE nel menu ── */
+    #offline-queue-info{
+      display:none;
+      font-size:11px;color:#E53935;font-weight:500;
+      padding:6px 14px 2px;
+    }
+    #offline-queue-info.visible{display:block}
+
     /* ── MENU OVERLAY ── */
     #menu-overlay{
       position:fixed;inset:0;z-index:800;
@@ -478,6 +497,7 @@
 
 <div id="tt"></div>
 <div id="toast" id="toast"></div>
+<div id="offline-badge">● OFFLINE</div>
 
 <!-- Popup scelta evento -->
 <div id="pick-popup" style="display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.45);align-items:flex-end;justify-content:center;">
@@ -604,6 +624,13 @@
         <div class="menu-btn-desc">Configura l'applicazione</div>
       </div>
     </button>
+    <button class="menu-btn" id="menu-sync-btn" onclick="menuSyncNow()" style="display:none">
+      <div class="menu-btn-icon" style="background:#E53935;color:#fff">↑</div>
+      <div>
+        <div class="menu-btn-label">Sincronizza ora</div>
+        <div class="menu-btn-desc" id="menu-sync-desc">Carica le modifiche offline</div>
+      </div>
+    </button>
 
     <!-- Pannello impostazioni espandibile -->
     <div id="settings-panel">
@@ -618,6 +645,18 @@
           <div class="toggle-thumb"></div>
         </label>
       </div>
+      <div class="settings-row" style="margin-top:6px">
+        <div class="settings-row-label">
+          <span>Modalità offline</span>
+          <small>Salva modifiche localmente e sincronizza poi</small>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="setting-offline-mode" onchange="applyOfflineModeSetting()"/>
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+      <div id="offline-queue-info"></div>
     </div>
   </div>
 </div>
@@ -630,7 +669,7 @@
 // ══════════════════════════════════════════════════════════════
 // VERSIONE
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v1.16.260617-2335';
+const APP_VERSION = 'v2.0.260620-1755';
 document.addEventListener('DOMContentLoaded', ()=>{
   const el = document.getElementById('overlay-version');
   if(el) el.textContent = APP_VERSION;
@@ -850,6 +889,7 @@ async function startAuth() {
   hideOverlay();
   await loadAllData();
   startAutoRefresh();
+  updateOfflineUI(); // inizializza badge e stato offline
 }
 
 function showOverlay(msg) {
@@ -866,6 +906,22 @@ function hideOverlay() {
 // CARICAMENTO DATI DA GOOGLE CALENDAR
 // ══════════════════════════════════════════════════════════════
 async function loadAllData() {
+  // Offline o modalità offline attiva → usa cache locale
+  if(shouldWorkOffline()){
+    const cached = loadEventsFromCache();
+    if(cached){
+      EVENTS = cached;
+      build();
+      const ts = localStorage.getItem(CACHE_TS_KEY);
+      const ago = ts ? Math.round((Date.now()-parseInt(ts))/60000) : null;
+      const msg = ago !== null ? `Offline — cache di ${ago} min fa` : 'Offline — dati dalla cache';
+      showToast(msg);
+    } else {
+      showToast('Offline — nessun dato in cache');
+    }
+    return;
+  }
+
   const months = getWindowMonths();
   const years  = [...new Set(months.map(m => m.y))];
 
@@ -888,6 +944,7 @@ async function loadAllData() {
   EVENTS   = allEvents;
   HOLIDAYS = allHolidays;
   NOSCUOLA = allNoScuola;
+  saveEventsToCache(allEvents); // salva in cache per uso offline
   build();
 }
 
@@ -1794,6 +1851,44 @@ async function saveEvent(){
     };
   }
 
+  // ── OFFLINE: accoda l'operazione e aggiorna la cache ottimisticamente ──
+  if(shouldWorkOffline()){
+    if(currentEventId){
+      // Modifica: aggiorna evento in cache
+      enqueueOffline({ type:'update', calendarId: currentCalendarId, eventId: currentEventId, resource: eventBody });
+      EVENTS = EVENTS.map(e => {
+        if(e.id !== currentEventId) return e;
+        const color = GC[parseInt(selectedColorId)] || GC.def;
+        return { ...e, title, description: desc, color, colorId: parseInt(selectedColorId)||null,
+          start: startDate, end: endDate,
+          time: allday?null:startTime, timeEnd: allday?null:endTime,
+          isMulti: startDate!==endDate,
+          startMs: isoToMs(startDate), endMs: isoToMs(endDate) };
+      });
+    } else {
+      // Nuovo evento: inserisce in cache con ID temporaneo
+      enqueueOffline({ type:'insert', calendarId: calId, resource: eventBody });
+      const color = GC[parseInt(selectedColorId)] || GC.def;
+      const fakeEv = {
+        id: 'offline_' + Date.now(),
+        title, description: desc, color,
+        colorId: parseInt(selectedColorId)||null,
+        start: startDate, end: endDate,
+        time: allday?null:startTime, timeEnd: allday?null:endTime,
+        isMulti: startDate!==endDate,
+        startMs: isoToMs(startDate), endMs: isoToMs(endDate),
+        calendarId: calId,
+      };
+      EVENTS.push(fakeEv);
+    }
+    saveEventsToCache(EVENTS);
+    build();
+    closePopup();
+    showToast(currentEventId ? 'Modificato — in attesa di sync' : 'Aggiunto — in attesa di sync');
+    return;
+  }
+
+  // ── ONLINE: comportamento normale ──
   try {
     if(currentEventId){
       await gapi.client.calendar.events.update({
@@ -1820,6 +1915,19 @@ async function deleteEvent(){
   if(!currentEventId) return;
   if(!confirm('Eliminare questo evento?')) return;
   document.getElementById('ev-saving').textContent = 'Eliminazione...';
+
+  // ── OFFLINE: accoda l'eliminazione e rimuove dalla cache ──
+  if(shouldWorkOffline()){
+    enqueueOffline({ type:'delete', calendarId: currentCalendarId, eventId: currentEventId });
+    EVENTS = EVENTS.filter(e => e.id !== currentEventId);
+    saveEventsToCache(EVENTS);
+    build();
+    closePopup();
+    showToast('Eliminato — in attesa di sync');
+    return;
+  }
+
+  // ── ONLINE: comportamento normale ──
   try {
     await gapi.client.calendar.events.delete({
       calendarId: currentCalendarId,
@@ -1869,10 +1977,28 @@ function openMenu(){
   // Aggiorna la riga versione/autore ogni volta che si apre
   const vl = document.getElementById('menu-version-line');
   if(vl) vl.textContent = APP_VERSION + ' · Andrea Xotta';
+  // Mostra pulsante sync se ci sono modifiche in attesa
+  const q = getOfflineQueue();
+  const syncBtn = document.getElementById('menu-sync-btn');
+  const syncDesc = document.getElementById('menu-sync-desc');
+  if(syncBtn){
+    if(q.length > 0){
+      syncBtn.style.display = 'flex';
+      if(syncDesc) syncDesc.textContent = `${q.length} modifica/e in attesa`;
+    } else {
+      syncBtn.style.display = 'none';
+    }
+  }
   const overlay = document.getElementById('menu-overlay');
   overlay.classList.add('open');
   // Chiudi con tap sull'overlay esterno
   overlay.addEventListener('click', _menuOverlayClick);
+}
+
+async function menuSyncNow(){
+  closeMenu();
+  if(!navigator.onLine){ showToast('Nessuna connessione disponibile'); return; }
+  await flushOfflineQueue();
 }
 
 function closeMenu(){
@@ -1935,15 +2061,44 @@ function applyTodayBorderSetting(){
   }
 }
 
+function applyOfflineModeSetting(){
+  const checked = document.getElementById('setting-offline-mode').checked;
+  const s = loadSettings();
+  s.offlineMode = checked;
+  saveSettings(s);
+  updateOfflineUI();
+  if(checked){
+    showToast('Modalità offline attivata');
+  } else {
+    // Se si disattiva e c'è coda pendente, offri sync immediata
+    const q = getOfflineQueue();
+    if(q.length > 0){
+      showToast('Sincronizzazione in corso…');
+      flushOfflineQueue();
+    } else {
+      showToast('Modalità offline disattivata');
+    }
+  }
+}
+
+function isOfflineModeEnabled(){
+  const s = loadSettings();
+  return s.offlineMode === true;
+}
+
 function initSettings(){
   const s = loadSettings();
-  const checked = s.todayBorder !== false; // default: attivo
+  // Bordo oggi
+  const checked = s.todayBorder !== false;
   const cb = document.getElementById('setting-today-border');
   if(cb) cb.checked = checked;
-  // Applica stato iniziale via CSS class su html (più efficiente)
   if(!checked){
     document.documentElement.classList.add('no-today-border');
   }
+  // Modalità offline
+  const cbOff = document.getElementById('setting-offline-mode');
+  if(cbOff) cbOff.checked = s.offlineMode === true;
+  updateOfflineUI();
 }
 
 // Chiudi il pannello impostazioni quando si chiude il menu (gestito dentro closeMenu)
@@ -1954,6 +2109,124 @@ document.addEventListener('keydown', e=>{
     const overlay = document.getElementById('menu-overlay');
     if(overlay && overlay.classList.contains('open')){ closeMenu(); }
   }
+});
+
+// ══════════════════════════════════════════════════════════════
+// OFFLINE SUPPORT
+// ══════════════════════════════════════════════════════════════
+const CACHE_KEY     = 'youc_events_cache';
+const QUEUE_KEY     = 'youc_sync_queue';
+const CACHE_TS_KEY  = 'youc_cache_ts';
+
+// Salva eventi in cache locale
+function saveEventsToCache(events){
+  try {
+    localStorage.setItem(CACHE_KEY,    JSON.stringify(events));
+    localStorage.setItem(CACHE_TS_KEY, String(Date.now()));
+  } catch(e){}
+}
+
+// Leggi cache locale
+function loadEventsFromCache(){
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch(e){ return null; }
+}
+
+// Aggiunge un'operazione alla coda di sync
+function enqueueOffline(op){
+  try {
+    const q = JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]');
+    q.push({ ...op, queuedAt: Date.now() });
+    localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
+    updateOfflineQueueInfo();
+  } catch(e){}
+}
+
+// Legge la coda
+function getOfflineQueue(){
+  try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); }
+  catch(e){ return []; }
+}
+
+// Svuota la coda
+function clearOfflineQueue(){
+  localStorage.removeItem(QUEUE_KEY);
+  updateOfflineQueueInfo();
+}
+
+// Aggiorna la label nella coda del menu
+function updateOfflineQueueInfo(){
+  const el = document.getElementById('offline-queue-info');
+  if(!el) return;
+  const q = getOfflineQueue();
+  if(q.length > 0){
+    el.textContent = `⏳ ${q.length} modifica/e in attesa di sync`;
+    el.classList.add('visible');
+  } else {
+    el.textContent = '';
+    el.classList.remove('visible');
+  }
+}
+
+// Aggiorna badge OFFLINE e stato UI
+function updateOfflineUI(){
+  const badge = document.getElementById('offline-badge');
+  const offlineActive = !navigator.onLine || isOfflineModeEnabled();
+  if(badge){
+    if(offlineActive) badge.classList.add('visible');
+    else              badge.classList.remove('visible');
+  }
+  // Aggiorna checkbox nel pannello impostazioni
+  const cbOff = document.getElementById('setting-offline-mode');
+  if(cbOff) cbOff.checked = isOfflineModeEnabled();
+  updateOfflineQueueInfo();
+}
+
+// Determina se operare offline (connessione assente OPPURE modalità offline attiva)
+function shouldWorkOffline(){
+  return !navigator.onLine || isOfflineModeEnabled();
+}
+
+// Esegue la coda di sync verso Google Calendar
+async function flushOfflineQueue(){
+  const queue = getOfflineQueue();
+  if(queue.length === 0) return;
+  if(!navigator.onLine){ showToast('Ancora offline, sync rinviata'); return; }
+  let errors = 0;
+  for(const op of queue){
+    try {
+      await ensureToken();
+      if(op.type === 'insert'){
+        await gapi.client.calendar.events.insert({ calendarId: op.calendarId, resource: op.resource });
+      } else if(op.type === 'update'){
+        await gapi.client.calendar.events.update({ calendarId: op.calendarId, eventId: op.eventId, resource: op.resource });
+      } else if(op.type === 'delete'){
+        await gapi.client.calendar.events.delete({ calendarId: op.calendarId, eventId: op.eventId });
+      }
+    } catch(e){
+      console.error('[Sync] errore:', e);
+      errors++;
+    }
+  }
+  clearOfflineQueue();
+  await loadAllData();
+  if(errors > 0) showToast(`Sincronizzato con ${errors} errore/i`);
+  else           showToast('Tutto sincronizzato ✓');
+}
+
+// Ascolta eventi di rete
+window.addEventListener('online', ()=>{
+  updateOfflineUI();
+  if(!isOfflineModeEnabled()){
+    showToast('Connessione ripristinata — sincronizzazione…');
+    flushOfflineQueue();
+  }
+});
+window.addEventListener('offline', ()=>{
+  updateOfflineUI();
+  showToast('Connessione assente — modalità offline');
 });
 
 // ══════════════════════════════════════════════════════════════
