@@ -661,15 +661,31 @@
   </div>
 </div>
 
-<!-- Google API -->
-<script src="https://apis.google.com/js/api.js"></script>
-<script src="https://accounts.google.com/gsi/client"></script>
+<!-- Google API — caricati solo se online; offline si usa la cache locale -->
+<script>
+(function(){
+  // Se il browser è offline non ha senso tentare di caricare le API Google:
+  // andiamo direttamente in modalità cache al window.load
+  if(!navigator.onLine){
+    window.__gapiOffline = true;
+    return;
+  }
+  function addScript(src){
+    const s = document.createElement('script');
+    s.src = src;
+    s.onerror = function(){ window.__gapiLoadError = true; };
+    document.head.appendChild(s);
+  }
+  addScript('https://apis.google.com/js/api.js');
+  addScript('https://accounts.google.com/gsi/client');
+})();
+</script>
 
 <script>
 // ══════════════════════════════════════════════════════════════
 // VERSIONE
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v2.0.260620-1755';
+const APP_VERSION = 'v2.0.260620-1802';
 document.addEventListener('DOMContentLoaded', ()=>{
   const el = document.getElementById('overlay-version');
   if(el) el.textContent = APP_VERSION;
@@ -806,11 +822,52 @@ async function ensureToken() {
 
 // ── Avvio autenticazione ─────────────────────────────────────
 async function startAuth() {
-  await new Promise(resolve => gapi.load('client', resolve));
-  await gapi.client.init({
-    apiKey: CONFIG.API_KEY,
-    discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest']
-  });
+
+  // ── AVVIO OFFLINE: gapi non disponibile o browser già offline ──
+  // Succede quando: (a) nessuna connessione, (b) api.js non si è caricato
+  const gapiUnavailable = window.__gapiOffline || window.__gapiLoadError
+                          || typeof gapi === 'undefined';
+
+  if(gapiUnavailable || !navigator.onLine){
+    const cached = loadEventsFromCache();
+    if(cached){
+      EVENTS = cached;
+      hideOverlay();
+      build();
+      updateOfflineUI();
+      startAutoRefresh();
+      const ts = localStorage.getItem(CACHE_TS_KEY);
+      const ago = ts ? Math.round((Date.now()-parseInt(ts))/60000) : null;
+      showToast(ago !== null ? `Offline — cache di ${ago} min fa` : 'Offline — dati dalla cache');
+    } else {
+      // Nessuna cache: mostra overlay con messaggio esplicito
+      showOverlay('Nessuna connessione e nessun dato in cache.\nConnettiti almeno una volta per usare l\'app offline.');
+    }
+    return;
+  }
+
+  // ── ONLINE: flusso normale ────────────────────────────────────
+  try {
+    await new Promise(resolve => gapi.load('client', resolve));
+    await gapi.client.init({
+      apiKey: CONFIG.API_KEY,
+      discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest']
+    });
+  } catch(e) {
+    // gapi.init fallito (rete caduta dopo il caricamento dello script)
+    console.warn('[Auth] gapi.init fallito, avvio offline:', e);
+    const cached = loadEventsFromCache();
+    if(cached){
+      EVENTS = cached;
+      hideOverlay();
+      build();
+      updateOfflineUI();
+      showToast('Rete non disponibile — dati dalla cache');
+    } else {
+      showOverlay('Errore di connessione. Connettiti e riprova.');
+    }
+    return;
+  }
 
   const hint     = localStorage.getItem('youc_login_hint');
   const saved    = localStorage.getItem('youc_token');
@@ -823,6 +880,7 @@ async function startAuth() {
     hideOverlay();
     await loadAllData();
     startAutoRefresh();
+    updateOfflineUI();
     return;
   }
 
@@ -833,19 +891,29 @@ async function startAuth() {
       hideOverlay();
       await loadAllData();
       startAutoRefresh();
+      updateOfflineUI();
       return;
     } catch(e) {
       // Sessione Chrome scaduta → procedi con One Tap
       console.warn('[Auth] silent refresh fallito, uso One Tap');
+      // Se siamo offline (sessione scaduta + nessuna rete), avvia dalla cache
+      if(!navigator.onLine){
+        const cached = loadEventsFromCache();
+        if(cached){
+          EVENTS = cached;
+          hideOverlay();
+          build();
+          updateOfflineUI();
+          showToast('Sessione scaduta — dati dalla cache');
+          return;
+        }
+      }
     }
   }
 
   // 3. Prima volta (o sessione scaduta): One Tap
-  // Imposta client_id nel tag g_id_onload e attiva One Tap
   document.getElementById('g_id_onload').dataset.client_id = CONFIG.CLIENT_ID;
 
-  // Attende che One Tap completi (l'utente vede il banner e fa tap)
-  // oppure timeout 8s → fallback a selezione manuale
   await new Promise((resolve) => {
     _oneTapResolve = resolve;
     google.accounts.id.initialize({
@@ -855,25 +923,20 @@ async function startAuth() {
       cancel_on_tap_outside: false,
     });
     google.accounts.id.prompt((notification) => {
-      // Se One Tap non è disponibile (bloccato, già usato, ecc.) risolvi subito
       if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
         resolve();
       }
     });
-    // Timeout di sicurezza
     setTimeout(resolve, 8000);
   });
 
-  // Ora chiediamo l'access token: con hint ora disponibile dovrebbe essere silenzioso
   const hintNow = localStorage.getItem('youc_login_hint');
   try {
     await requestToken(hintNow, '');
   } catch(e) {
-    // Ultimo fallback: mostra selettore account (solo se tutto il resto fallisce)
     await requestToken(null, 'select_account');
   }
 
-  // Salva email se non ancora fatto
   if (!localStorage.getItem('youc_login_hint')) {
     try {
       const ui = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
@@ -889,7 +952,7 @@ async function startAuth() {
   hideOverlay();
   await loadAllData();
   startAutoRefresh();
-  updateOfflineUI(); // inizializza badge e stato offline
+  updateOfflineUI();
 }
 
 function showOverlay(msg) {
@@ -1460,7 +1523,26 @@ function showToast(msg){
 }
 
 // Avvio automatico autenticazione
-window.addEventListener('load', () => startAuth());
+// Se offline, gli script Google non vengono iniettati → parte subito
+// Se online, aspetta che api.js sia pronto (max 6s) prima di chiamare startAuth
+window.addEventListener('load', () => {
+  if(window.__gapiOffline){
+    startAuth();
+    return;
+  }
+  // Aspetta che gapi sia disponibile (api.js carica in modo asincrono)
+  let waited = 0;
+  const interval = setInterval(()=>{
+    waited += 100;
+    const gapiReady = typeof gapi !== 'undefined' && typeof google !== 'undefined';
+    const timedOut  = waited >= 6000;
+    const errored   = window.__gapiLoadError;
+    if(gapiReady || timedOut || errored){
+      clearInterval(interval);
+      startAuth();
+    }
+  }, 100);
+});
 
 // ══════════════════════════════════════════════════════════════
 // WAKE LOCK — schermo always-on su mobile
