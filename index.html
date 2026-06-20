@@ -685,7 +685,7 @@
 // ══════════════════════════════════════════════════════════════
 // VERSIONE
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v2.0.260620-1802';
+const APP_VERSION = 'v2.0.260620-1816';
 document.addEventListener('DOMContentLoaded', ()=>{
   const el = document.getElementById('overlay-version');
   if(el) el.textContent = APP_VERSION;
@@ -758,48 +758,51 @@ let tokenExpiresAt = 0; // timestamp ms della scadenza del token
 // Flusso:
 //  1. Access token valido in localStorage → carica subito (zero UI)
 //  2. Token scaduto ma hint noto → GIS refresh silenzioso (zero UI)
+//     In modalità PWA standalone GIS non ha i cookie Chrome:
+//     se il refresh silenzioso fallisce si usa il token salvato
+//     finché è valido, oppure si avvisa l'utente di riaprire in Chrome.
 //  3. Primo avvio → One Tap: banner "Continua come X" (1 tap)
 //     oppure fallback GIS con account pre-selezionato
 // ══════════════════════════════════════════════════════════════
 
-let _tokenClient = null;       // GIS tokenClient (creato una sola volta)
-let _oneTapReady = false;      // true quando GIS è pronto
-let _oneTapResolve = null;     // resolver della Promise in attesa di One Tap
+let _tokenClient = null;
+let _oneTapReady = false;
+let _oneTapResolve = null;
+
+// true se l'app gira come PWA standalone (fuori da Chrome)
+const IS_STANDALONE = window.matchMedia('(display-mode: standalone)').matches
+                   || window.navigator.standalone === true;
 
 // ── Salva token ───────────────────────────────────────────────
 function storeTokens({ access_token, expires_in }) {
-  tokenExpiresAt = Date.now() + (expires_in || 3600) * 1000 - 60000;
+  // Salva con 5 min di margine invece di 1 — dà più tempo in standalone
+  tokenExpiresAt = Date.now() + (expires_in || 3600) * 1000 - 300000;
   localStorage.setItem('youc_token',     access_token);
   localStorage.setItem('youc_token_exp', String(tokenExpiresAt));
   gapi.client.setToken({ access_token });
 }
 
-// ── Callback globale chiamata da One Tap quando l'utente sceglie l'account ──
+// ── Callback globale chiamata da One Tap ──────────────────────
 window.onOneTapCredential = function(credentialResponse) {
-  // credentialResponse.credential è un id_token JWT
-  // Estraiamo l'email dal payload (base64) per salvarlo come hint
   try {
     const payload = JSON.parse(atob(credentialResponse.credential.split('.')[1]));
     if (payload.email) localStorage.setItem('youc_login_hint', payload.email);
   } catch(e) {}
-
-  // Ora che Google sa chi siamo, chiediamo l'access token silenziosamente
   if (_oneTapResolve) { _oneTapResolve(); _oneTapResolve = null; }
 };
 
-// ── Crea tokenClient (una sola volta) ────────────────────────
+// ── Crea tokenClient ──────────────────────────────────────────
 function getTokenClient(hint) {
-  // Ricrea sempre con hint aggiornato
   _tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CONFIG.CLIENT_ID,
     scope:     CONFIG.SCOPES,
     hint:      hint || undefined,
-    callback:  () => {} // sovrascritta al momento dell'uso
+    callback:  () => {}
   });
   return _tokenClient;
 }
 
-// ── Richiede access token a GIS (silenzioso se hint noto) ────
+// ── Richiede access token a GIS ───────────────────────────────
 function requestToken(hint, prompt) {
   return new Promise((resolve, reject) => {
     const client = getTokenClient(hint);
@@ -812,12 +815,52 @@ function requestToken(hint, prompt) {
   });
 }
 
-// ── Assicura token valido prima di ogni chiamata API ─────────
+// ── Assicura token valido prima di ogni chiamata API ──────────
+// In standalone il refresh silenzioso GIS non funziona (niente cookie Chrome).
+// Strategia:
+//   A) token ancora valido → OK
+//   B) token scaduto + browser Chrome → refresh silenzioso GIS
+//   C) token scaduto + standalone → lancia TokenExpiredError
+//      (il chiamante decide se mostrare avviso o fallire silenziosamente)
+class TokenExpiredError extends Error {
+  constructor(){ super('token_expired_standalone'); this.name = 'TokenExpiredError'; }
+}
+
 async function ensureToken() {
+  // A) Token ancora valido in memoria
   if (Date.now() < tokenExpiresAt) return;
+
+  // Rileggi da localStorage (potrebbe essere stato rinnovato da un'altra tab)
+  const saved    = localStorage.getItem('youc_token');
+  const savedExp = parseInt(localStorage.getItem('youc_token_exp') || '0', 10);
+  if (saved && Date.now() < savedExp) {
+    tokenExpiresAt = savedExp;
+    gapi.client.setToken({ access_token: saved });
+    return;
+  }
+
+  // B) Token scaduto — in Chrome tentiamo il refresh silenzioso GIS
+  if (!IS_STANDALONE) {
+    const hint = localStorage.getItem('youc_login_hint');
+    await requestToken(hint, '');
+    return;
+  }
+
+  // C) Standalone: GIS non può rinnovare senza cookie Chrome
+  //    Proviamo comunque (a volte funziona se la sessione è recente),
+  //    ma con timeout breve per non bloccare l'utente
   const hint = localStorage.getItem('youc_login_hint');
-  // Refresh silenzioso: GIS usa i cookie Chrome per rinnovare senza UI
-  await requestToken(hint, '');
+  try {
+    await Promise.race([
+      requestToken(hint, ''),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), 5000)
+      )
+    ]);
+  } catch(e) {
+    // Refresh fallito in standalone → segnala al chiamante
+    throw new TokenExpiredError();
+  }
 }
 
 // ── Avvio autenticazione ─────────────────────────────────────
@@ -1138,14 +1181,18 @@ function parseEvents(items) {
 // Aggiornamento automatico ogni 5 minuti
 function startAutoRefresh() {
   setInterval(async () => {
+    if(shouldWorkOffline()) return; // non aggiornare se offline/modalità offline
     await loadAllData();
     showToast('Calendario aggiornato');
   }, 5 * 60 * 1000);
 
-  // Rinnovo preventivo del token ogni 45 minuti (scade a 60)
+  // Rinnovo preventivo del token ogni 45 minuti
+  // In standalone non forziamo il rinnovo (GIS non funziona senza cookie Chrome):
+  // il token viene riutilizzato finché localStorage lo ha valido
   setInterval(async () => {
+    if(IS_STANDALONE) return; // il rinnovo in standalone avviene solo al prossimo avvio in Chrome
     try {
-      tokenExpiresAt = 0; // forza il rinnovo
+      tokenExpiresAt = 0; // forza il rinnovo solo in Chrome
       await ensureToken();
     } catch(e) { console.warn('[Auth] token refresh periodico fallito:', e); }
   }, 45 * 60 * 1000);
@@ -2239,12 +2286,17 @@ function clearOfflineQueue(){
 }
 
 // Aggiorna la label nella coda del menu
-function updateOfflineQueueInfo(){
+function updateOfflineQueueInfo(state){
   const el = document.getElementById('offline-queue-info');
   if(!el) return;
   const q = getOfflineQueue();
-  if(q.length > 0){
+  if(state === 'expired'){
+    el.textContent = '⚠️ Sessione scaduta — apri in Chrome per sync';
+    el.style.color = '#E53935';
+    el.classList.add('visible');
+  } else if(q.length > 0){
     el.textContent = `⏳ ${q.length} modifica/e in attesa di sync`;
+    el.style.color = '#E53935';
     el.classList.add('visible');
   } else {
     el.textContent = '';
@@ -2276,7 +2328,26 @@ async function flushOfflineQueue(){
   const queue = getOfflineQueue();
   if(queue.length === 0) return;
   if(!navigator.onLine){ showToast('Ancora offline, sync rinviata'); return; }
+
+  // Verifica token PRIMA di partire con la coda
+  try {
+    await ensureToken();
+  } catch(e) {
+    if(e instanceof TokenExpiredError){
+      // Standalone con token scaduto: non possiamo sincronizzare senza riaprire in Chrome
+      showToast('⚠️ Sessione scaduta — apri in Chrome per sincronizzare');
+      // Mostra anche un messaggio più visibile nel menu
+      updateOfflineQueueInfo('expired');
+      return;
+    }
+    showToast('Errore di autenticazione — riprova');
+    return;
+  }
+
+  showToast(`Sincronizzazione di ${queue.length} modifica/e…`);
   let errors = 0;
+  const failed = []; // operazioni che non riescono, le teniamo in coda
+
   for(const op of queue){
     try {
       await ensureToken();
@@ -2288,14 +2359,35 @@ async function flushOfflineQueue(){
         await gapi.client.calendar.events.delete({ calendarId: op.calendarId, eventId: op.eventId });
       }
     } catch(e){
-      console.error('[Sync] errore:', e);
+      console.error('[Sync] errore op:', op.type, e);
+      // Se il token è scaduto mid-sync, interrompi e tieni le rimanenti in coda
+      if(e instanceof TokenExpiredError){
+        failed.push(...queue.slice(queue.indexOf(op)));
+        showToast('⚠️ Sessione scaduta — apri in Chrome per completare la sync');
+        break;
+      }
+      // Errore 410 Gone = evento già eliminato su Calendar → considera OK
+      if(e.status === 410) continue;
       errors++;
+      failed.push(op);
     }
   }
-  clearOfflineQueue();
+
+  // Aggiorna la coda: tieni solo le operazioni fallite
+  if(failed.length > 0){
+    try { localStorage.setItem(QUEUE_KEY, JSON.stringify(failed)); } catch(ex){}
+  } else {
+    clearOfflineQueue();
+  }
+
   await loadAllData();
-  if(errors > 0) showToast(`Sincronizzato con ${errors} errore/i`);
-  else           showToast('Tutto sincronizzato ✓');
+
+  if(errors > 0 && failed.length > 0){
+    showToast(`Sync parziale — ${errors} errore/i, riprova`);
+  } else if(errors === 0 && failed.length === 0){
+    showToast('Tutto sincronizzato ✓');
+  }
+  updateOfflineQueueInfo();
 }
 
 // Ascolta eventi di rete
