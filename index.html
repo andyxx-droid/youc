@@ -614,7 +614,7 @@
       <div class="menu-btn-icon refresh">↺</div>
       <div>
         <div class="menu-btn-label">Aggiorna</div>
-        <div class="menu-btn-desc">Ricarica il sorgente dal server</div>
+        <div class="menu-btn-desc">Svuota la cache e ricarica l'app dal server</div>
       </div>
     </button>
     <button class="menu-btn" onclick="menuSetup()">
@@ -685,7 +685,7 @@
 // ══════════════════════════════════════════════════════════════
 // VERSIONE
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v2.1.260719-2223';
+const APP_VERSION = 'v2.1.260719-2248';
 document.addEventListener('DOMContentLoaded', ()=>{
   const el = document.getElementById('overlay-version');
   if(el) el.textContent = APP_VERSION;
@@ -2143,10 +2143,27 @@ function _menuOverlayClick(e){
   if(e.target === document.getElementById('menu-overlay')) closeMenu();
 }
 
-function menuRefresh(){
+async function menuRefresh(){
   closeMenu();
-  // Hard reload dal server (bypassa cache)
-  window.location.reload(true);
+  showToast('Aggiornamento in corso…');
+  try{
+    // Disinstalla eventuali Service Worker attivi
+    if('serviceWorker' in navigator){
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+    // Svuota tutte le cache create dal Service Worker
+    if('caches' in window){
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+  }catch(e){
+    console.warn('Errore durante la pulizia cache/SW:', e);
+  }
+  // Ricarica forzando il download da zero (bust cache con querystring)
+  const url = new URL(window.location.href);
+  url.searchParams.set('_r', Date.now());
+  window.location.replace(url.toString());
 }
 
 function menuResetView(){
