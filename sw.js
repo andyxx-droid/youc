@@ -1,10 +1,19 @@
 // ══════════════════════════════════════════════════════════════
 // YouC — Service Worker
-// Strategia: Cache First per le risorse statiche (app shell + Google APIs)
-//            Network First per le chiamate Google Calendar API
+// Strategia: Network First (con timeout) per l'app shell (index.html,
+//            manifest, icone) — così vedi sempre l'ultima versione online
+//            Cache First con aggiornamento in background per le Google APIs
+//            Network First puro (nessuna cache) per le chiamate Calendar API
 // ══════════════════════════════════════════════════════════════
 
-const CACHE_NAME    = 'youc-shell-v1';
+// ⚠️ AGGIORNA questo timestamp ad OGNI deploy (anche di un solo file).
+// È l'unico modo per far accorgere i browser/PWA installate che c'è
+// una nuova versione: cambia il contenuto di questo file, che i
+// browser ricontrollano periodicamente byte-per-byte.
+// Formato libero, basta che sia diverso dal precedente — es. data e ora
+// del deploy: "2026-07-19-1830" (anno-mese-giorno-oraminuti).
+const CACHE_VERSION = "v2.1.260719-2248";
+const CACHE_NAME    = `youc-shell-v${CACHE_VERSION}`;
 const CACHE_TIMEOUT = 4000; // ms prima di rinunciare alla rete e usare cache
 
 // Risorse dell'app shell da pre-cachare all'installazione
@@ -74,26 +83,41 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // ── App shell (index.html, manifest, icone) → Cache First ──
-  event.respondWith(cacheFirst(event.request));
+  // ── App shell (index.html, manifest, icone) → Network First con timeout ──
+  // Prova sempre la rete per prima: così, quando sei online, vedi sempre
+  // l'ultima versione pubblicata. La cache è usata solo come fallback
+  // (rete lenta oltre CACHE_TIMEOUT, o offline).
+  event.respondWith(networkFirst(event.request));
 });
 
-// Cache First: serve dalla cache se disponibile, altrimenti rete + aggiorna cache
-async function cacheFirst(request) {
-  const cached = await caches.match(request);
-  if(cached) return cached;
-
+// Network First con timeout: prova la rete, altrimenti usa la cache
+async function networkFirst(request) {
   try {
-    const networkResp = await fetch(request);
+    const networkResp = await fetchWithTimeout(request, CACHE_TIMEOUT);
     if(networkResp && networkResp.status === 200){
       const cache = await caches.open(CACHE_NAME);
       cache.put(request, networkResp.clone());
     }
     return networkResp;
   } catch(e) {
-    // Rete non disponibile e nessuna cache: restituisce 503
+    // Rete non disponibile/lenta: usa la cache come fallback
+    const cached = await caches.match(request);
+    if(cached) return cached;
     return new Response('Offline — risorsa non in cache', { status: 503 });
   }
+}
+
+function fetchWithTimeout(request, timeout) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), timeout);
+    fetch(request).then(resp => {
+      clearTimeout(timer);
+      resolve(resp);
+    }).catch(err => {
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
 }
 
 // Cache First + aggiornamento silenzioso in background (Stale While Revalidate)
